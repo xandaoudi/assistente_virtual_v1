@@ -1,0 +1,59 @@
+# Caddy — reverse proxy com HTTPS automático (Let's Encrypt).
+#
+# O Caddy obtém e RENOVA o certificado sozinho. Não há certbot, não há cron
+# de renovação. Requisito: a porta 80 e a 443 precisam estar abertas na
+# Security List da Oracle E no iptables da VM (ver deployment.md §5).
+
+{
+	email {$ACME_EMAIL}
+
+	# Descomente para testar sem gastar a cota de emissão do Let's Encrypt
+	# (5 falhas por hora por domínio). Emite certificado inválido no navegador,
+	# mas confirma que todo o caminho de rede está funcionando.
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	# --- Cabeçalhos de segurança ---
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options    "nosniff"
+		X-Frame-Options           "DENY"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# --- Webhook do Telegram ---
+	# O caminho carrega um secret longo e aleatório (WEBHOOK_SECRET_PATH), de
+	# modo que a URL não seja descobrível. A aplicação AINDA deve validar o
+	# header X-Telegram-Bot-Api-Secret-Token — a URL secreta é só a 1ª barreira.
+	handle /webhook/* {
+		reverse_proxy api:8000
+	}
+
+	# --- Healthcheck público (sem log, para não poluir) ---
+	handle /health {
+		reverse_proxy api:8000
+	}
+
+	# --- API REST (fase 3, frontend web) ---
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	# Qualquer outra rota: 404 silencioso. Reduz superfície de varredura.
+	handle {
+		respond "Not Found" 404
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size     10MiB
+			roll_keep     5
+			roll_keep_for 168h
+		}
+		format json
+	}
+}

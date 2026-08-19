@@ -1,0 +1,129 @@
+# Assistente Virtual — stack de produção (Oracle Cloud Ampere A1 / ARM64)
+#
+# Serviços:
+#   db        → PostgreSQL 16 (dados)
+#   api       → FastAPI + Agno (webhooks e API REST)
+#   scheduler → APScheduler (lembretes e resumos) — processo SEPARADO de propósito
+#   caddy     → reverse proxy + HTTPS automático (Let's Encrypt)
+#
+# Por que scheduler separado: se o scheduler rodasse dentro da API com mais de
+# um worker uvicorn, cada worker dispararia o mesmo job e o usuário receberia
+# lembretes duplicados. Um único container de scheduler garante RF-80/RNF-14.
+
+name: assistente-virtual
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: av_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Postgres em UTC. A conversão para o fuso do usuário é da aplicação.
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres-init:/docker-entrypoint-initdb.d:ro
+    # Sem "ports:" — o banco NÃO é exposto à internet.
+    # Para acessar de fora, use um túnel SSH (ver deployment.md §9.2).
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: assistente-virtual:latest
+    container_name: av_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      APP_ROLE: api
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - media:/app/media          # anexos de recibo (RF-37)
+    networks:
+      - backend
+      - frontend
+    # Sem "ports:" — só o Caddy fala com a API, pela rede interna.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status==200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+
+  scheduler:
+    image: assistente-virtual:latest
+    container_name: av_scheduler
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      APP_ROLE: scheduler
+    command: ["python", "-m", "app.scheduler"]
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    volumes:
+      - media:/app/media
+    networks:
+      - backend
+      - frontend       # precisa de saída para a internet: envia mensagens ao Telegram
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: av_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"        # HTTP/3
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # certificados — NÃO apague este volume
+      - caddy_config:/config
+    depends_on:
+      - api
+    networks:
+      - frontend
+
+volumes:
+  pgdata:
+  media:
+  caddy_data:
+  caddy_config:
+
+networks:
+  backend:
+    internal: true      # sem rota para a internet: db e scheduler ficam isolados
+  frontend:

@@ -1,0 +1,45 @@
+# Dependências de produção — Assistente Virtual
+# Versões fixadas por linha menor para builds reprodutíveis.
+# Atualize com: pip list --outdated
+
+# --- Web / API ---------------------------------------------------------------
+fastapi==0.115.*
+uvicorn[standard]==0.32.*
+pydantic==2.9.*
+pydantic-settings==2.6.*
+python-multipart==0.0.12         # upload de imagem de recibo (RF-36)
+
+# --- Agente / LLM ------------------------------------------------------------
+agno==1.*                        # orquestrador do agente
+openai==1.*                      # provider padrão (RNF-08)
+# anthropic==0.39.*              # descomente conforme o provider escolhido (Q-02)
+# google-genai==0.*
+# ollama==0.3.*                  # Fase 4 — LLM local
+
+# --- Banco de dados ----------------------------------------------------------
+sqlalchemy==2.0.*
+alembic==1.14.*
+psycopg[binary,pool]==3.2.*      # driver Postgres 3.x
+
+# --- Scheduler (RF-75 a RF-81) ----------------------------------------------
+apscheduler==3.10.*
+tzdata==2024.*
+
+# --- Integrações -------------------------------------------------------------
+python-telegram-bot==21.*        # canal fase 1
+google-api-python-client==2.*    # Google Calendar (RF-20)
+google-auth-oauthlib==1.2.*
+google-auth-httplib2==0.2.*
+
+# --- Datas em linguagem natural (RF-12, RF-59) -------------------------------
+python-dateutil==2.9.*
+dateparser==1.2.*                # entende "quinta que vem", "mês passado" em PT-BR
+
+# --- Segurança ---------------------------------------------------------------
+cryptography==43.*               # cifra refresh tokens em repouso (RNF-03)
+slowapi==0.1.*                   # rate limiting (RNF-17)
+
+# --- Utilidades --------------------------------------------------------------
+httpx==0.27.*
+structlog==24.*                  # logs estruturados (RNF-22)
+pillow==11.*                     # pré-processamento da imagem de recibo

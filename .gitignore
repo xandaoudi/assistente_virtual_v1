@@ -1,0 +1,29 @@
+# Segredos — NUNCA commitar (RNF-02)
+.env
+.env.local
+.env.production
+*.pem
+*.key
+credentials.json
+
+# Backups e mídia
+backups/
+media/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# IDE / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
