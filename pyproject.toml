@@ -17,6 +17,7 @@ dependencies = [
     "sqlalchemy>=2.0.52",
     "structlog>=26.1.0",
     "uvicorn[standard]>=0.52.4",
+    "requests>=2.32.0",
 ]
 
 [dependency-groups]
