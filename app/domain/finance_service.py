@@ -321,9 +321,13 @@ class FinanceService:
     async def _exigir_categoria_do_usuario(
         self, user_id: uuid.UUID, category_id: uuid.UUID
     ) -> None:
-        """RNF-04: uma transação nunca pode referenciar a categoria de outro usuário."""
+        """RNF-04: uma transação nunca pode referenciar a categoria de outro usuário.
+
+        RF-47: uma categoria desativada não é mais oferecida para novos lançamentos —
+        só permanece vinculada às transações que já a usavam antes da desativação.
+        """
         categoria = await self._category_repository.get(user_id, category_id)
-        if categoria is None:
+        if categoria is None or not categoria.is_active:
             raise DomainError("Categoria não encontrada para este usuário")
 
 

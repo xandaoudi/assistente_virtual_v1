@@ -58,3 +58,11 @@ def test_funcao_e_pura_mesma_entrada_mesma_saida() -> None:
     descricao = "Comprei no mercado"
 
     assert suggest_category(descricao) == suggest_category(descricao)
+
+
+def test_99_nao_casa_como_substring_de_um_preco() -> None:
+    # "99" é a palavra-chave do app de transporte, mas não pode casar dentro de um preço
+    # como "R$ 1,99" ou "cinema 199" — regressão do bug de substring.
+    resultado = suggest_category("cinema 199")
+
+    assert resultado.category == "Lazer"

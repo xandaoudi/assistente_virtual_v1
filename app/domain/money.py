@@ -11,6 +11,7 @@ Money = Decimal
 _TWO_PLACES = Decimal("0.01")
 _THOUSAND_MULTIPLIER = Decimal(1000)
 
+_CURRENCY_SYMBOL_RE = re.compile(r"[Rr]\$")
 _TOKEN_RE = re.compile(r"(?P<sign>-)?\s*(?P<num>\d[\d.,]*)(?P<mult>[kK])?")
 
 
@@ -64,7 +65,10 @@ def parse_amount(texto: str) -> ParsedAmount:
     Levanta `DomainError` se nenhum número reconhecível estiver presente, ou se o valor
     resultante for negativo (RN-04).
     """
-    match = _TOKEN_RE.search(texto)
+    # Remove o símbolo de moeda antes de procurar o sinal: sem isso, "-R$ 50,00" não
+    # reconhece o "-" como sinal porque ele fica longe demais do primeiro dígito.
+    texto_sem_moeda = _CURRENCY_SYMBOL_RE.sub("", texto)
+    match = _TOKEN_RE.search(texto_sem_moeda)
     if match is None:
         raise DomainError(f"Não foi possível reconhecer um valor em {texto!r}")
 

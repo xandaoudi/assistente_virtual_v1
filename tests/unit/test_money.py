@@ -33,6 +33,13 @@ def test_parse_amount_rejeita_valor_negativo() -> None:
         parse_amount("-45,00")
 
 
+def test_parse_amount_rejeita_valor_negativo_com_simbolo_de_moeda() -> None:
+    # Regressão: o "-" ficava "longe demais" do primeiro dígito com "R$" no meio e o
+    # sinal era perdido, fazendo o valor virar positivo em vez de ser rejeitado.
+    with pytest.raises(DomainError):
+        parse_amount("-R$ 50,00")
+
+
 def test_parse_amount_sem_numero_levanta_domain_error() -> None:
     with pytest.raises(DomainError):
         parse_amount("abacate")

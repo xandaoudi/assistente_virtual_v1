@@ -51,7 +51,9 @@ class SqlAlchemyTransactionRepository:
             transacao = (
                 await session.execute(
                     select(Transaction).where(
-                        Transaction.id == transaction_id, Transaction.user_id == user_id
+                        Transaction.id == transaction_id,
+                        Transaction.user_id == user_id,
+                        Transaction.deleted_at.is_(None),
                     )
                 )
             ).scalar_one_or_none()
@@ -67,7 +69,9 @@ class SqlAlchemyTransactionRepository:
             transacao = (
                 await session.execute(
                     select(Transaction).where(
-                        Transaction.id == transaction_id, Transaction.user_id == user_id
+                        Transaction.id == transaction_id,
+                        Transaction.user_id == user_id,
+                        Transaction.deleted_at.is_(None),
                     )
                 )
             ).scalar_one_or_none()

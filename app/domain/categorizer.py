@@ -4,6 +4,7 @@ Existe para medir, na Etapa 3, se a LLM realmente melhora a categorização em r
 baseline grátis e instantâneo — sem baseline não há como saber.
 """
 
+import re
 from dataclasses import dataclass
 
 from app.domain.text import normalize_text
@@ -67,6 +68,13 @@ _PALAVRAS_CHAVE: dict[str, str] = {
     "assinatura": "Assinaturas",
 }
 
+# `\b` evita que palavras-chave curtas e numéricas (ex.: "99") casem como substring de um
+# número maior (ex.: "199", um preço) — sem isso, qualquer descrição com "R$ 1,99" viraria
+# Transporte.
+_PALAVRA_PATTERNS: dict[str, re.Pattern[str]] = {
+    palavra: re.compile(rf"\b{re.escape(palavra)}\b") for palavra in _PALAVRAS_CHAVE
+}
+
 
 @dataclass(frozen=True)
 class CategorySuggestion:
@@ -85,7 +93,7 @@ def suggest_category(description: str) -> CategorySuggestion:
 
     pontuacao: dict[str, int] = {}
     for palavra, categoria in _PALAVRAS_CHAVE.items():
-        if palavra in texto:
+        if _PALAVRA_PATTERNS[palavra].search(texto):
             pontuacao[categoria] = pontuacao.get(categoria, 0) + 1
 
     if not pontuacao:

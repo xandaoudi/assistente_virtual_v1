@@ -19,6 +19,7 @@ _CASOS = [
     ("últimos 30 dias", date(2026, 7, 21), date(2026, 8, 19)),
     ("este ano", date(2026, 1, 1), date(2026, 8, 19)),
     ("em julho", date(2026, 7, 1), date(2026, 7, 31)),
+    ("no ano passado", date(2025, 1, 1), date(2025, 12, 31)),
 ]
 
 
@@ -63,3 +64,13 @@ def test_expressao_desconhecida_levanta_domain_error_com_mensagem_util() -> None
 def test_mes_nomeado_desconhecido_levanta_domain_error() -> None:
     with pytest.raises(DomainError):
         resolve_period("em fevereireiro", _HOJE)
+
+
+def test_mes_nomeado_com_ano_explicito_nao_ignora_o_ano() -> None:
+    inicio, fim = resolve_period("em março de 2024", _HOJE)
+    assert (inicio, fim) == (date(2024, 3, 1), date(2024, 3, 31))
+
+
+def test_mes_nomeado_com_ano_invalido_levanta_domain_error() -> None:
+    with pytest.raises(DomainError):
+        resolve_period("em março de abc", _HOJE)

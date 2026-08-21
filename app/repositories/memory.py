@@ -38,7 +38,7 @@ class InMemoryTransactionRepository:
         self, user_id: uuid.UUID, transaction_id: uuid.UUID, **changes: object
     ) -> Transaction | None:
         transacao = self._store.get(transaction_id)
-        if transacao is None or transacao.user_id != user_id:
+        if transacao is None or transacao.user_id != user_id or transacao.deleted_at is not None:
             return None
         for campo, valor in changes.items():
             setattr(transacao, campo, valor)
@@ -46,7 +46,7 @@ class InMemoryTransactionRepository:
 
     async def delete(self, user_id: uuid.UUID, transaction_id: uuid.UUID) -> bool:
         transacao = self._store.get(transaction_id)
-        if transacao is None or transacao.user_id != user_id:
+        if transacao is None or transacao.user_id != user_id or transacao.deleted_at is not None:
             return False
         transacao.deleted_at = datetime.now(UTC)
         return True

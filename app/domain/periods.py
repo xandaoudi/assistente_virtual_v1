@@ -60,6 +60,11 @@ def _este_ano(today: date) -> tuple[date, date]:
     return date(today.year, 1, 1), today
 
 
+def _ano_passado(today: date) -> tuple[date, date]:
+    ano = today.year - 1
+    return date(ano, 1, 1), date(ano, 12, 31)
+
+
 _EXPRESSOES: dict[str, Callable[[date], tuple[date, date]]] = {
     "hoje": _hoje,
     "ontem": _ontem,
@@ -69,6 +74,7 @@ _EXPRESSOES: dict[str, Callable[[date], tuple[date, date]]] = {
     "mês passado": _mes_passado,
     "últimos 30 dias": _ultimos_30_dias,
     "este ano": _este_ano,
+    "no ano passado": _ano_passado,
 }
 
 
@@ -101,6 +107,15 @@ def resolve_period(expr: str, today: date) -> tuple[date, date]:
         return handler(today)
 
     if normalizado.startswith("em "):
-        return _mes_nomeado(normalizado.removeprefix("em ").strip(), today.year)
+        nome_mes, _, ano_str = normalizado.removeprefix("em ").strip().partition(" de ")
+        ano_str = ano_str.strip()
+        ano = _parse_ano(ano_str) if ano_str else today.year
+        return _mes_nomeado(nome_mes.strip(), ano)
 
     raise DomainError(f"Expressão de período desconhecida: {expr!r}")
+
+
+def _parse_ano(texto: str) -> int:
+    if not texto.isdigit():
+        raise DomainError(f"Ano inválido em expressão de período: {texto!r}")
+    return int(texto)
