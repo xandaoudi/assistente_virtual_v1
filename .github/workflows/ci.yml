@@ -37,9 +37,13 @@ jobs:
         with:
           enable-cache: true
 
-      # Passo 1: falha se uv.lock estiver desatualizado em relação ao pyproject.toml
+      # Passo 1: falha se uv.lock estiver desatualizado em relação ao pyproject.toml.
+      # `--frozen` NÃO valida isso — só usa o lock como está, sem checar nada
+      # (verificado: `uv sync --frozen` passa silenciosamente com um
+      # pyproject.toml alterado e lock desatualizado). `--locked` é quem
+      # reprova nesse caso.
       - name: Instalar dependências (uv.lock travado)
-        run: uv sync --frozen
+        run: uv sync --locked
 
       # Passo 2-3: lint é o mais rápido — falha cedo
       - name: Ruff — formatação
