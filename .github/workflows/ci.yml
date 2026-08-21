@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  APP_ENV: test
+  DATABASE_URL: postgresql+psycopg://assistente:assistente@localhost:5432/assistente_virtual
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: assistente
+          POSTGRES_PASSWORD: assistente
+          POSTGRES_DB: assistente_virtual
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U assistente -d assistente_virtual"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # Passo 1: falha se uv.lock estiver desatualizado em relação ao pyproject.toml
+      - name: Instalar dependências (uv.lock travado)
+        run: uv sync --frozen
+
+      # Passo 2-3: lint é o mais rápido — falha cedo
+      - name: Ruff — formatação
+        run: uv run ruff format --check .
+
+      - name: Ruff — lint
+        run: uv run ruff check .
+
+      # Passo 4
+      - name: mypy
+        run: uv run mypy app
+
+      # Passo 5
+      - name: Testes unitários (com cobertura)
+        run: uv run pytest -m unit --cov=app --cov-report=term-missing
+
+      # Passo 6
+      - name: Testes de integração
+        run: uv run pytest -m integration
+
+      # Passo 7
+      - name: Testes e2e
+        run: uv run pytest -m e2e
+
+      # Passo 8 — RNF-19: domain e tools são o núcleo do negócio, cobertura mínima de 80%
+      - name: Cobertura mínima em app/domain e app/tools
+        run: uv run coverage report --include="app/domain/*,app/tools/*" --fail-under=80
