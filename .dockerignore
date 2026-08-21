@@ -1,0 +1,17 @@
+.git
+.github
+.env
+tasks/
+tests/
+task_etapa*.md
+requirements.md
+README.md
+.venv
+**/__pycache__
+*.pyc
+.mypy_cache
+.pytest_cache
+.ruff_cache
+htmlcov
+.coverage
+docker-compose.dev.yml

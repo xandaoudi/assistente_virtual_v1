@@ -2,8 +2,8 @@
 
 **Projeto:** `assistente_virtual_v1`
 **Autor:** Alexandre
-**Versão do documento:** 1.0 — **baseline aprovada para início do desenvolvimento**
-**Data:** 19/08/2026
+**Versão do documento:** 1.1 — **baseline aprovada para início do desenvolvimento**
+**Data:** 21/08/2026
 
 **Decisões travadas nesta versão:**
 
@@ -14,8 +14,23 @@
 | Mecanismo de tools (Q-01) | **Opção C** — function calling nativo em produção, caminho MCP preparado |
 | Escopo da Fase 1 | OCR de recibo **adiado** para a Fase 1.5; sync com Google Calendar **mantido** |
 | Histórico de conversa (Q-07) | **Tabela própria**, não a memória do framework |
+| Padrões de código | **Enxuto**, PEP 8 via Ruff, sem comentários redundantes (§8.5) |
+| Testes | **Três níveis por funcionalidade**: unitário, integração e E2E (§8.6) |
+| Gerenciador de dependências | **uv**, com `uv.lock` versionado |
+| Auditoria (RF-88 × RNF-15) | **RNF-15 prevalece** — parâmetros redigidos |
+| Exclusão de conta (RF-06) | **Soft delete + purga física** após carência de 7 dias |
 
-**Mudanças desde a v0.2:** §3.3 fechada com decisão; stack atualizada de Agno para Pydantic AI; RF-36/RF-37 movidos para a Fase 1.5; nova §13 com ordem de implementação.
+**Mudanças desde a v0.2:** §3.3 fechada com decisão; stack atualizada de Agno para Pydantic AI; RF-36/RF-37 movidos para a Fase 1.5; novas §8.5 (padrões de código) e §8.6 (estratégia de testes); nova §13 com ordem de implementação.
+
+**Mudanças na v1.1** — três contradições encontradas durante o detalhamento das tarefas, agora resolvidas:
+
+| # | Requisito | O que mudou |
+|---|---|---|
+| 1 | **RF-88** | contradizia o RNF-15 ao mandar registrar parâmetros. Agora registra parâmetros **redigidos**. |
+| 2 | **RF-06** | dizia "exclusão de todos os dados" enquanto a §6 definia soft delete. Agora são **duas fases** explícitas, e a §6 distingue registro individual de conta. |
+| 3 | **RNF-14** | prometia "entrega exatamente uma vez", que não é alcançável através de rede. Agora promete **efeito único observável**, com os três mecanismos que o sustentam. |
+
+Q-05, Q-06 e Q-09 já foram decididas nos arquivos de tarefa e serão consolidadas aqui na T8.1.
 
 ---
 
@@ -381,7 +396,7 @@ Isso deve rodar **automaticamente em CI**, não como boa intenção:
 | RF-03 | Um mesmo usuário deve poder vincular **múltiplos canais** (Telegram, WhatsApp, Web) à mesma conta, via código de vinculação. | Should |
 | RF-04 | No primeiro contato, o sistema deve executar um onboarding curto capturando: nome, fuso horário e moeda padrão. | Must |
 | RF-05 | O usuário deve poder solicitar a exportação de todos os seus dados (JSON/CSV). | Should |
-| RF-06 | O usuário deve poder solicitar a exclusão da conta e de todos os seus dados. | Must |
+| RF-06 | O usuário deve poder solicitar a exclusão da conta, em **duas fases**: (1) solicitação com confirmação explícita marca a conta como excluída e suspende o acesso **imediatamente**, sendo reversível durante a carência; (2) após a carência (padrão: 7 dias), uma rotina faz a **remoção física** de todos os dados em todas as tabelas. A política de privacidade declara o prazo e o alcance dos backups. | Must |
 
 ### 4.2 Agenda
 
@@ -477,7 +492,7 @@ Isso deve rodar **automaticamente em CI**, não como boa intenção:
 | RF-85 | Toda operação de dados deve ser exposta à LLM exclusivamente como tool com schema tipado (nome, descrição, parâmetros, retorno). | Must |
 | RF-86 | As tools devem ser implementadas como funções puras sobre os serviços de domínio, **sem dependência do framework de agente**, permitindo expor via function calling, MCP ou HTTP com adapters finos. | Must |
 | RF-87 | Toda tool deve retornar um resultado estruturado com indicação de sucesso/erro e mensagem legível, nunca uma exceção crua. | Must |
-| RF-88 | Toda chamada de tool deve ser registrada em log de auditoria (usuário, tool, parâmetros, resultado, duração, timestamp). | Must |
+| RF-88 | Toda chamada de tool deve ser registrada em log de auditoria: usuário, tool, **parâmetros redigidos**, status do resultado, duração e timestamp. Campos sensíveis (`amount`, `description`, títulos, texto livre) são **redigidos** — o RNF-15 prevalece. O propósito é responder "quem chamou o quê, quando, e deu certo?"; o valor real vive em `transactions`, que é a fonte da verdade. | Must |
 | RF-89 | Tools de escrita devem ser **idempotentes** quando possível, via chave de idempotência derivada da requisição. | Should |
 
 ---
@@ -600,7 +615,8 @@ notifications_log                           -- RF-80
 **Regras de integridade:**
 
 - Toda tabela de domínio carrega `user_id`; **toda query filtra por `user_id`** (RNF-04).
-- Exclusões são **soft delete** (`deleted_at`), permitindo o "desfaz isso" do RF-72.
+- Exclusão de **registro individual** (transação, evento, categoria) é **soft delete** (`deleted_at`), permitindo o "desfaz isso" do RF-72.
+- Exclusão de **conta** é diferente: soft delete na solicitação e **remoção física** após a carência (RF-06). A purga alcança todas as tabelas que carregam `user_id`, incluindo `conversations`/`messages`, `notifications_log` e `tool_audit_log`.
 - Valores monetários usam `numeric(14,2)` — **nunca** float.
 - Timestamps de evento em `timestamptz`; o fuso do usuário fica em `users.timezone`.
 
@@ -655,7 +671,7 @@ notifications_log                           -- RF-80
 |---|---|
 | RNF-12 | Resposta a consultas simples em até **5 s** (p95), incluindo a latência da LLM. |
 | RNF-13 | O webhook do canal deve responder em até **2 s**, processando de forma assíncrona quando necessário e enviando indicador de "digitando". |
-| RNF-14 | O scheduler deve garantir **entrega exatamente uma vez** por notificação (RF-80) e sobreviver a reinício do processo. |
+| RNF-14 | O scheduler deve garantir **efeito único observável pelo usuário** por notificação (RF-80) e sobreviver a reinício do processo, por meio de três mecanismos: **reivindicação atômica** (nenhum processo envia o que outro já pegou), **registro persistente** (o estado sobrevive ao reinício) e **janela de utilidade** (nunca reenviar o que já perdeu o sentido). Entrega exatamente-uma-vez através de rede não é alcançável e não é prometida. |
 | RNF-16 | Falha da LLM ou de provider externo deve degradar com mensagem clara ao usuário, sem perda de dados já confirmados. |
 | RNF-17 | Rate limiting por usuário para conter abuso e custo de API. |
 | RNF-18 | O sistema deve registrar custo/tokens por interação para acompanhamento de gasto com LLM. |
@@ -664,11 +680,55 @@ notifications_log                           -- RF-80
 
 | ID | Requisito |
 |---|---|
-| RNF-19 | Cobertura de testes automatizados ≥ 80% na camada de domínio e tools, **sem LLM no circuito** (tools testadas diretamente). |
-| RNF-20 | Suite de testes de comportamento do agente com casos de exemplo (frases → tool esperada + parâmetros esperados), executável em CI. |
+| RNF-19 | Cobertura de testes automatizados ≥ 80% na camada de domínio e tools, **sem LLM no circuito**. |
+| RNF-20 | Nenhum merge na `main` com suite vermelha. O CI é o portão, não a boa vontade. |
 | RNF-21 | Migrations versionadas (Alembic); nenhuma alteração manual de schema. |
 | RNF-22 | Logs estruturados (JSON) e healthcheck exposto pela API. |
 | RNF-23 | Aplicação containerizada (Docker) com `docker-compose` para desenvolvimento local. |
+
+### 8.5 Padrões de Código
+
+O código deve ser **enxuto**: a menor quantidade de código que resolve o problema com clareza. Menos código é menos superfície para bug, menos para ler e menos para manter.
+
+| ID | Requisito |
+|---|---|
+| RNF-24 | Código em conformidade com **PEP 8**, verificado e formatado por **Ruff** (linter + formatter). Violação **falha o build** — estilo não é assunto de code review. |
+| RNF-25 | **Type hints obrigatórios** em toda função e método. `mypy` em modo estrito sobre `app/domain` e `app/tools`. |
+| RNF-26 | **Proibido comentário que reafirma o que o código já diz.** Comentário existe para explicar *por que*, nunca *o quê*. Se o código precisa de comentário para ser entendido, o código deve ser reescrito — nome melhor, função menor, early return. |
+| RNF-27 | **Docstrings apenas onde têm leitor.** Serviços de domínio públicos e tools. Nas tools a docstring **é enviada à LLM em toda requisição** (§3.3.5): é código de produção pago por token, não documentação — deve ser curta e precisa. |
+| RNF-28 | **YAGNI.** Nenhuma abstração, camada, interface ou padrão de projeto adicionado por antecipação. Abstração se cria no segundo caso de uso real, não no primeiro imaginado. |
+| RNF-29 | **Toda nova dependência precisa justificar-se.** Se a biblioteca padrão resolve, usa-se a biblioteca padrão. Dependência é custo permanente: superfície de segurança, build, manutenção. |
+| RNF-30 | **Zero código morto.** Imports não usados, variáveis não usadas, funções órfãs e código comentado falham o build. Histórico é responsabilidade do git, não de blocos comentados. |
+| RNF-31 | Funções curtas e com responsabilidade única. Limite de complexidade ciclomática aplicado pelo Ruff. |
+| RNF-32 | Nomes em **inglês** no código; mensagens ao usuário em **português** e centralizadas fora da lógica (RNF-11). |
+
+> **O que "enxuto" não significa:** código curto às custas de clareza. `a = [x for y in z for x in y if x.t == 1 and x.v > 0]` não é enxuto, é denso. Enxuto é não escrever a camada que ninguém pediu.
+
+### 8.6 Estratégia de Testes
+
+**Toda funcionalidade tem os três níveis.** "Funcionalidade" aqui é um RF de comportamento observável — não cada função interna.
+
+| ID | Requisito |
+|---|---|
+| RNF-33 | **Unitário** — domínio puro. Sem banco, sem rede, sem LLM, sem relógio real (datas injetadas). Repositórios substituídos por implementações em memória. É onde as regras de negócio da §7 são provadas. |
+| RNF-34 | **Integração** — tools + PostgreSQL real, na mesma versão de produção, subido em container. Sem LLM. Cada teste roda em transação revertida ao final. Prova que schema, queries e validação conversam. |
+| RNF-35 | **E2E** — da `ChannelMessage` até a resposta ao usuário, atravessando gateway, agente, tools, domínio e banco. O **modelo é substituído** por `TestModel`/`FunctionModel` do Pydantic AI. Prova a fiação completa, de forma determinística. |
+| RNF-36 | `ALLOW_MODEL_REQUESTS=False` fixado globalmente na configuração de teste, para que **nenhuma chamada real à LLM aconteça por acidente** no CI — nem custo, nem intermitência. |
+| RNF-37 | Testes de comportamento do agente (frase → tool esperada + parâmetros esperados) usando `FunctionModel` e `capture_run_messages()`, verificando o que o agente **decidiu**, não só o que respondeu. |
+| RNF-38 | **Suite de avaliação com modelo real**, executada **sob demanda**, fora do portão de merge: mede acurácia de escolha de tool e extração de parâmetros em PT-BR. É lenta, custa dinheiro e é não-determinística — por isso não bloqueia merge, mas é a única que prova que o Gemini entende português. |
+| RNF-39 | Nenhum teste do CI depende de rede externa. Google Calendar e Telegram entram como dublês nos três níveis. |
+
+**A pirâmide, e por que ela tem essa forma:**
+
+| Nível | Proporção alvo | Velocidade | O que quebra quando falha |
+|---|---|---|---|
+| Unitário | ~70% | milissegundos | uma regra de negócio |
+| Integração | ~25% | segundos | o contrato com o banco |
+| E2E | ~5% | dezenas de segundos | a fiação entre camadas |
+
+> **A distinção que mais importa aqui:** o E2E com `TestModel` prova que **seu sistema está ligado corretamente**. Ele não prova, e não tem como provar, que o Gemini interpreta bem *"gastei 45 no mercado ontem"*. Essas são duas perguntas diferentes, e confundi-las gera falsa confiança. A primeira é respondida pelo RNF-35, a toda hora, de graça. A segunda só pelo RNF-38, de vez em quando, pagando.
+
+**Correspondência com os critérios de aceite:** cada CA da §10 deve ter um teste E2E que o verifique. O CA é a especificação; o teste é a prova de que ela vale.
 
 ---
 
@@ -706,7 +766,7 @@ notifications_log                           -- RF-80
 ### Fase 4 — LLM Local
 - Implementação do provider Ollama/vLLM sobre a interface do RNF-08
 - Avaliação de modelos abertos quanto à qualidade de function calling em português
-- Benchmark de acurácia (tool certa + parâmetros certos) contra a suite do RNF-20
+- Benchmark de acurácia (tool certa + parâmetros certos) contra a suite de avaliação do RNF-38
 - Estratégia de fallback: modelo local como padrão, nuvem como contingência
 
 ### Fase 5 — Evoluções
@@ -779,9 +839,13 @@ Sequência sugerida para a Fase 1. Cada etapa termina em algo **verificável** �
 - Estrutura de pastas da §3.3.7 criada, ainda vazia
 - FastAPI subindo com `/health`
 - Postgres em Docker, Alembic configurado
-- Verificação em CI do RF-86 (`grep` da §3.3.7) já rodando **desde o primeiro commit**
+- **Ruff e mypy configurados e falhando o build** (RNF-24, RNF-25)
+- **`pytest` com as três marcas** (`unit`, `integration`, `e2e`) e `ALLOW_MODEL_REQUESTS=False` global (RNF-36)
+- Verificação em CI do RF-86 (`grep` da §3.3.7)
 
-> **Pronto quando:** `docker compose up` sobe tudo e `/health` responde 200.
+> **Pronto quando:** `docker compose up` sobe tudo, `/health` responde 200, e o CI reprova um commit com import não usado.
+
+> **Por que tudo isso na Etapa 0:** portões de qualidade só funcionam se nunca foram desligados. Ligar Ruff em cima de 3 mil linhas existentes gera centenas de erros e a vontade de desativá-lo. Ligar em cima de zero linha não gera nenhum.
 
 ### Etapa 1 — Domínio de finanças, sem LLM nenhuma
 
@@ -831,7 +895,7 @@ OAuth, cifra do refresh token (RNF-03), sincronização e tratamento de conflito
 
 ### Etapa 8 — Fechamento do MVP
 
-Rate limiting (RNF-17), rastreio de custo (RNF-18), exportação e exclusão de dados (RF-05, RF-06), suite de comportamento do agente (RNF-20), checklist de go-live do `deployment.md`.
+Rate limiting (RNF-17), rastreio de custo (RNF-18), exportação e exclusão de dados (RF-05, RF-06), suite de avaliação com modelo real (RNF-38), checklist de go-live do `deployment.md`.
 
 ---
 
@@ -840,8 +904,10 @@ Rate limiting (RNF-17), rastreio de custo (RNF-18), exportação e exclusão de 
 | # | Princípio |
 |---|---|
 | 1 | **Domínio antes de tool, tool antes de agente.** Nunca o contrário — a LLM é a última camada, não a primeira. |
-| 2 | **Nenhuma etapa termina sem teste.** O RNF-19 pede 80% em domínio e tools; alcançar isso no fim é muito mais caro que manter durante. |
-| 3 | **A verificação do RF-86 roda desde o commit 1.** Ela só protege se nunca for desligada. |
-| 4 | **Migrations sempre aditivas.** Adicione coluna, migre dado, remova a antiga num deploy posterior (ver `deployment.md`, §6). |
-| 5 | **Descrição de tool é código de produção.** Cada palavra é paga em toda requisição (§3.3.5). |
-| 6 | **Ao final de cada etapa, um commit que sobe.** Se não dá para fazer deploy, a etapa não acabou. |
+| 2 | **Os três níveis de teste acompanham a funcionalidade**, não vêm depois dela (§8.6). Cobertura alcançada no fim custa muito mais que cobertura mantida durante. |
+| 3 | **Portões de qualidade rodam desde o commit 1.** Ruff, mypy e a verificação do RF-86 só protegem se nunca forem desligados. |
+| 4 | **Escreva menos.** Antes de criar uma abstração, pergunte se existe um segundo caso de uso *real* (RNF-28). Se não existe, não crie. |
+| 5 | **Se precisou de comentário para explicar o quê, reescreva o código** (RNF-26). Nome melhor, função menor, early return. |
+| 6 | **Migrations sempre aditivas.** Adicione coluna, migre dado, remova a antiga num deploy posterior (ver `deployment.md`, §6). |
+| 7 | **Descrição de tool é código de produção.** Cada palavra é paga em toda requisição (§3.3.5, RNF-27). |
+| 8 | **Ao final de cada etapa, um commit que sobe.** Se não dá para fazer deploy, a etapa não acabou. |

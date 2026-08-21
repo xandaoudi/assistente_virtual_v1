@@ -1,0 +1,94 @@
+[project]
+name = "assistente-virtual"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.19.1",
+    "apscheduler>=3.11.3",
+    "cryptography>=50.0.0",
+    "dateparser>=1.4.2",
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "psycopg[binary,pool]>=3.3.4",
+    "pydantic-ai-slim[google]>=2.33.0",
+    "pydantic-settings>=2.15.0",
+    "sqlalchemy>=2.0.52",
+    "structlog>=26.1.0",
+    "uvicorn[standard]>=0.52.4",
+]
+
+[dependency-groups]
+dev = [
+    "inline-snapshot>=0.35.4",
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.4",
+    "testcontainers[postgres]>=4.15.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["."]
+extend-exclude = ["*.md"]              # docs com trechos de exemplo, não são código do projeto
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # isort — ordenação de imports
+    "N",         # pep8-naming
+    "UP",        # pyupgrade
+    "B",         # bugbear — armadilhas comuns
+    "A",         # sombreamento de builtins
+    "C4",        # comprehensions
+    "SIM",       # simplificações
+    "TID",       # tidy imports — usado no RF-86 (T0.9)
+    "PTH",       # pathlib em vez de os.path
+    "RUF",       # regras específicas do ruff
+    "ERA",       # eradicate — código comentado (RNF-30)
+    "ARG",       # argumentos não usados
+    "C90",       # mccabe — complexidade (RNF-31)
+    "ASYNC",     # armadilhas de async
+    "S",         # bandit — segurança
+    "DTZ",       # datetime sem timezone (crítico p/ RF-12)
+]
+ignore = ["E501"]                      # comprimento fica com o formatter
+
+[tool.ruff.lint.per-file-ignores]
+# TID251 também vale para tests/: conftest.py precisa importar pydantic_ai
+# para a fixture do RNF-36 (bloquear chamada real à LLM), e isso não é
+# domain nem tools — RF-86 não se aplica a testes.
+"tests/*" = ["S101", "ARG", "TID251"]   # assert e fixtures não usadas são normais em teste
+"app/adapters/*" = ["TID251"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"pydantic_ai".msg = "RF-86: domain e tools não importam o framework de agente. Use app/adapters/."
+
+[tool.mypy]
+python_version = "3.12"
+platform = "linux"                 # produção é Ubuntu; mypy deve checar para lá, não para o Windows de dev
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--strict-markers -q"
+markers = [
+    "unit: domínio puro, sem IO",
+    "integration: com Postgres real",
+    "e2e: fluxo completo com modelo substituído",
+]
