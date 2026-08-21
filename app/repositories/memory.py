@@ -1,0 +1,81 @@
+"""Repositórios em memória — mesma semântica de filtro por `user_id` da implementação real.
+
+Existem para o RNF-33 (teste unitário sem banco): `app.repositories.sqlalchemy` é a única
+implementação usada em produção. O chamador deve gerar `.id` antes de `add` (não há flush
+para preencher um default aqui, como faz o banco).
+"""
+
+import uuid
+from datetime import UTC, datetime
+
+from app.models.category import Category
+from app.models.transaction import Transaction
+
+
+class InMemoryTransactionRepository:
+    def __init__(self) -> None:
+        self._store: dict[uuid.UUID, Transaction] = {}
+
+    async def add(self, user_id: uuid.UUID, transaction: Transaction) -> Transaction:
+        transaction.user_id = user_id
+        self._store[transaction.id] = transaction
+        return transaction
+
+    async def get(self, user_id: uuid.UUID, transaction_id: uuid.UUID) -> Transaction | None:
+        transacao = self._store.get(transaction_id)
+        if transacao is None or transacao.user_id != user_id or transacao.deleted_at is not None:
+            return None
+        return transacao
+
+    async def list_by_user(self, user_id: uuid.UUID) -> list[Transaction]:
+        return [
+            transacao
+            for transacao in self._store.values()
+            if transacao.user_id == user_id and transacao.deleted_at is None
+        ]
+
+    async def update(
+        self, user_id: uuid.UUID, transaction_id: uuid.UUID, **changes: object
+    ) -> Transaction | None:
+        transacao = self._store.get(transaction_id)
+        if transacao is None or transacao.user_id != user_id:
+            return None
+        for campo, valor in changes.items():
+            setattr(transacao, campo, valor)
+        return transacao
+
+    async def delete(self, user_id: uuid.UUID, transaction_id: uuid.UUID) -> bool:
+        transacao = self._store.get(transaction_id)
+        if transacao is None or transacao.user_id != user_id:
+            return False
+        transacao.deleted_at = datetime.now(UTC)
+        return True
+
+
+class InMemoryCategoryRepository:
+    def __init__(self) -> None:
+        self._store: dict[uuid.UUID, Category] = {}
+
+    async def add(self, user_id: uuid.UUID, category: Category) -> Category:
+        category.user_id = user_id
+        self._store[category.id] = category
+        return category
+
+    async def get(self, user_id: uuid.UUID, category_id: uuid.UUID) -> Category | None:
+        categoria = self._store.get(category_id)
+        if categoria is None or categoria.user_id != user_id:
+            return None
+        return categoria
+
+    async def list_by_user(self, user_id: uuid.UUID) -> list[Category]:
+        return [categoria for categoria in self._store.values() if categoria.user_id == user_id]
+
+    async def update(
+        self, user_id: uuid.UUID, category_id: uuid.UUID, **changes: object
+    ) -> Category | None:
+        categoria = self._store.get(category_id)
+        if categoria is None or categoria.user_id != user_id:
+            return None
+        for campo, valor in changes.items():
+            setattr(categoria, campo, valor)
+        return categoria
