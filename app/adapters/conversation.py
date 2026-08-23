@@ -6,12 +6,20 @@ fonte que este processo não controlou por completo (RNF-06: um `SystemPromptPar
 num turno anterior não deve valer como instrução hoje), moram aqui.
 """
 
-from pydantic_ai import Agent
+import asyncio
+
+from pydantic_ai import Agent, capture_run_messages
 from pydantic_ai.agent import AgentRunResult
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter, sanitize_messages
 
 from app.adapters.agent import Deps
+from app.adapters.pipeline_errors import (
+    OperationConfirmedResponseFailedError,
+    write_operation_succeeded,
+)
 from app.domain.conversation_service import ConversationService
+
+DEFAULT_AGENT_RUN_TIMEOUT_SECONDS = 20.0
 
 
 def serialize_messages(messages: list[ModelMessage]) -> list[dict[str, object]]:
@@ -30,14 +38,31 @@ async def run_agent_turn(
     conversation_service: ConversationService,
     user_text: str,
     max_history_messages: int,
+    timeout_seconds: float = DEFAULT_AGENT_RUN_TIMEOUT_SECONDS,
 ) -> AgentRunResult[str]:
-    """Carrega o histórico da janela, roda o agente e grava só as mensagens novas do turno."""
+    """Carrega o histórico da janela, roda o agente e grava só as mensagens novas do turno.
+
+    RNF-13/RNF-12: `timeout_seconds` garante que uma LLM travada nunca segura o turno para
+    sempre. RF-71/RNF-16 (T3.9): se o turno falhar depois de uma tool de escrita já ter
+    confirmado a operação — a redação da resposta, por exemplo —, o erro que sobe é
+    `OperationConfirmedResponseFailedError`, não o erro original: quem chama nunca deve tratar
+    essa falha como se nada tivesse sido gravado.
+    """
     historico_bruto = await conversation_service.load_recent_history(
         deps.user_id, max_history_messages
     )
     historico = deserialize_messages(historico_bruto)
 
-    result = await agent.run(user_text, deps=deps, message_history=historico)
+    with capture_run_messages() as mensagens_capturadas:
+        try:
+            result = await asyncio.wait_for(
+                agent.run(user_text, deps=deps, message_history=historico),
+                timeout=timeout_seconds,
+            )
+        except Exception as erro:
+            if write_operation_succeeded(mensagens_capturadas):
+                raise OperationConfirmedResponseFailedError() from erro
+            raise
 
     novas_mensagens = serialize_messages(result.new_messages())
     await conversation_service.append_messages(deps.user_id, novas_mensagens)
