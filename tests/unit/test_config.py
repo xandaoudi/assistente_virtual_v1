@@ -63,10 +63,24 @@ def test_telegram_mode_webhook_e_aceito(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/db")
     monkeypatch.setenv("GOOGLE_API_KEY", "fake-key-de-teste")
     monkeypatch.setenv("TELEGRAM_MODE", "webhook")
+    monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "segredo-de-teste")
 
     settings = Settings(_env_file=None)
 
     assert settings.telegram_mode == "webhook"
+
+
+@pytest.mark.unit
+def test_telegram_webhook_secret_ausente_falha_no_start_com_provider_webhook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/db")
+    monkeypatch.setenv("GOOGLE_API_KEY", "fake-key-de-teste")
+    monkeypatch.setenv("TELEGRAM_MODE", "webhook")
+    monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET", raising=False)
+
+    with pytest.raises(ValidationError, match="TELEGRAM_WEBHOOK_SECRET"):
+        Settings(_env_file=None)
 
 
 @pytest.mark.unit

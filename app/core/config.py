@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     telegram_mode: str = "polling"
     telegram_bot_token: str | None = None
+    telegram_webhook_secret: str | None = None
 
     @model_validator(mode="after")
     def _valida_chave_do_provider(self) -> Self:
@@ -34,6 +35,10 @@ class Settings(BaseSettings):
         if self.telegram_mode not in {"polling", "webhook"}:
             raise ValueError(
                 f"TELEGRAM_MODE={self.telegram_mode!r} inválido. Use 'polling' ou 'webhook'."
+            )
+        if self.telegram_mode == "webhook" and not self.telegram_webhook_secret:
+            raise ValueError(
+                "TELEGRAM_WEBHOOK_SECRET é obrigatório quando TELEGRAM_MODE=webhook (T3.7)."
             )
         return self
 

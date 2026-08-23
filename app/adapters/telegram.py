@@ -221,3 +221,41 @@ class HttpTelegramUpdateSource:
         if not isinstance(corpo, dict) or not corpo.get("ok"):
             raise TelegramApiError(f"resposta inesperada da Bot API: {corpo!r}")
         return extract_updates_from_poll_response(corpo)
+
+
+class TelegramSender(Protocol):
+    """O que o webhook (T3.7) precisa para responder — dublado nos testes (RNF-39)."""
+
+    async def send_chat_action(self, chat_id: str, action: str) -> None: ...
+
+    async def send_message(self, chat_id: str, text: str) -> None: ...
+
+
+class TelegramClient:
+    """`TelegramSender` real, sobre a Bot API.
+
+    `send_message` envia `text` como uma única mensagem, já formatada e dentro do limite —
+    é responsabilidade de quem chama aplicar `format_telegram_output`/`split_telegram_message`
+    antes (`app.api.telegram_webhook`), para que um `TelegramSender` dublado nos testes veja
+    exatamente o que seria enviado de verdade.
+    """
+
+    def __init__(self, bot_token: str, *, timeout_seconds: float = 10.0) -> None:
+        self._base_url = f"https://api.telegram.org/bot{bot_token}"
+        self._timeout_seconds = timeout_seconds
+
+    async def send_chat_action(self, chat_id: str, action: str) -> None:
+        await self._post("sendChatAction", {"chat_id": chat_id, "action": action})
+
+    async def send_message(self, chat_id: str, text: str) -> None:
+        await self._post(
+            "sendMessage", {"chat_id": chat_id, "text": text, "parse_mode": "MarkdownV2"}
+        )
+
+    async def _post(self, metodo: str, payload: dict[str, object]) -> None:
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+                resposta = await client.post(f"{self._base_url}/{metodo}", json=payload)
+                resposta.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise TelegramApiError(str(exc)) from exc
