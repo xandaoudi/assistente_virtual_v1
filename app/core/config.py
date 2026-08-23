@@ -20,10 +20,21 @@ class Settings(BaseSettings):
     conversation_history_window: int = 20
     """Nº máximo de mensagens (ModelMessage) recarregadas por turno — §3.3.5, T3.5."""
 
+    telegram_mode: str = "polling"
+    telegram_bot_token: str | None = None
+
     @model_validator(mode="after")
     def _valida_chave_do_provider(self) -> Self:
         if self.llm_provider == "google" and not self.google_api_key:
             raise ValueError("GOOGLE_API_KEY é obrigatória quando LLM_PROVIDER=google (RNF-08).")
+        return self
+
+    @model_validator(mode="after")
+    def _valida_telegram_mode(self) -> Self:
+        if self.telegram_mode not in {"polling", "webhook"}:
+            raise ValueError(
+                f"TELEGRAM_MODE={self.telegram_mode!r} inválido. Use 'polling' ou 'webhook'."
+            )
         return self
 
 

@@ -45,3 +45,37 @@ def test_google_api_key_ausente_falha_no_start_com_provider_google(
 
     with pytest.raises(ValidationError, match="GOOGLE_API_KEY"):
         Settings(_env_file=None)
+
+
+@pytest.mark.unit
+def test_telegram_mode_padrao_e_polling(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/db")
+    monkeypatch.setenv("GOOGLE_API_KEY", "fake-key-de-teste")
+    monkeypatch.delenv("TELEGRAM_MODE", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.telegram_mode == "polling"
+
+
+@pytest.mark.unit
+def test_telegram_mode_webhook_e_aceito(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/db")
+    monkeypatch.setenv("GOOGLE_API_KEY", "fake-key-de-teste")
+    monkeypatch.setenv("TELEGRAM_MODE", "webhook")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.telegram_mode == "webhook"
+
+
+@pytest.mark.unit
+def test_telegram_mode_invalido_falha_no_start_com_mensagem_clara(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost/db")
+    monkeypatch.setenv("GOOGLE_API_KEY", "fake-key-de-teste")
+    monkeypatch.setenv("TELEGRAM_MODE", "carta-registrada")
+
+    with pytest.raises(ValidationError, match="TELEGRAM_MODE"):
+        Settings(_env_file=None)
