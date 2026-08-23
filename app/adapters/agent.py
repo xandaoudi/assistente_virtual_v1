@@ -43,8 +43,15 @@ def to_tool_context(deps: Deps) -> ToolContext:
 
 
 def create_agent(model: Model | None = None) -> Agent[Deps, str]:
+    # `instructions=`, não `system_prompt=`: o `system_prompt` só é gravado na primeira
+    # mensagem da história e nunca é reinjetado quando `agent.run(message_history=...)`
+    # já tem conteúdo — e a T3.5 (RNF-06) tira de propósito qualquer `SystemPromptPart`
+    # vindo do histórico recarregado. O resultado, com `system_prompt=`, era um agente sem
+    # instrução nenhuma a partir do segundo turno de qualquer conversa (bug real encontrado
+    # na verificação manual da T3.14). `instructions=` é recalculado a cada chamada ao
+    # modelo, nunca depende do que foi persistido.
     return Agent(
         model or build_llm_model(),
         deps_type=Deps,
-        system_prompt=load_system_prompt(),
+        instructions=load_system_prompt(),
     )
