@@ -144,7 +144,9 @@ def test_upgrade_cria_tabela_transactions_e_downgrade_remove() -> None:
         command.upgrade(cfg, "head")
         assert "transactions" in _tabelas_existentes()
 
-        command.downgrade(cfg, "-1")
+        # Revisão explícita (não "-1" a partir de head): migrations futuras empilhadas
+        # sobre esta não podem quebrar um teste que só quer provar o downgrade *desta*.
+        command.downgrade(cfg, "58446d98444b")
         assert "transactions" not in _tabelas_existentes()
     finally:
         command.upgrade(cfg, "head")

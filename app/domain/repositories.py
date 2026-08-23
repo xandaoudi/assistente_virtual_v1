@@ -7,10 +7,13 @@ sem ele.
 """
 
 import uuid
+from datetime import datetime
 from typing import Protocol
 
 from app.models.category import Category
+from app.models.tool_audit_log import ToolAuditLog
 from app.models.transaction import Transaction
+from app.models.user import User
 
 
 class TransactionRepository(Protocol):
@@ -37,3 +40,21 @@ class CategoryRepository(Protocol):
     async def update(
         self, user_id: uuid.UUID, category_id: uuid.UUID, **changes: object
     ) -> Category | None: ...
+
+
+class UserRepository(Protocol):
+    """Sem `add`: criar usuário é onboarding (T1.3/Etapa 4), não escopo das tools."""
+
+    async def get(self, user_id: uuid.UUID) -> User | None: ...
+
+    async def update(self, user_id: uuid.UUID, **changes: object) -> User | None: ...
+
+
+class ToolAuditLogRepository(Protocol):
+    """RF-88. Sem `update`/`delete`: um registro de auditoria nunca é alterado depois de escrito."""
+
+    async def add(self, entry: ToolAuditLog) -> ToolAuditLog: ...
+
+    async def list_by_user(
+        self, user_id: uuid.UUID, start: datetime, end: datetime
+    ) -> list[ToolAuditLog]: ...

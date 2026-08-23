@@ -131,6 +131,34 @@ async def test_saldo_e_receitas_menos_despesas_inclusive_negativo() -> None:
 
 
 @pytest.mark.asyncio
+async def test_summary_inclui_numero_de_transacoes() -> None:
+    service, transaction_repo, _ = _novo_service()
+    user_id = uuid.uuid4()
+    await transaction_repo.add(
+        user_id,
+        _nova_transacao(
+            user_id,
+            transaction_type=TransactionType.EXPENSE,
+            amount=Decimal("50.00"),
+            transaction_date=date(2026, 7, 10),
+        ),
+    )
+    await transaction_repo.add(
+        user_id,
+        _nova_transacao(
+            user_id,
+            transaction_type=TransactionType.INCOME,
+            amount=Decimal("100.00"),
+            transaction_date=date(2026, 7, 12),
+        ),
+    )
+
+    resumo = await service.get_summary(user_id, _INICIO, _FIM)
+
+    assert resumo.transaction_count == 2
+
+
+@pytest.mark.asyncio
 async def test_agrupamento_por_categoria_com_valor_e_percentual() -> None:
     service, transaction_repo, category_repo = _novo_service()
     user_id = uuid.uuid4()
@@ -198,6 +226,42 @@ async def test_percentuais_somam_100() -> None:
     agrupado = await service.get_spending_by_category(user_id, _INICIO, _FIM)
 
     assert sum(item["percent"] for item in agrupado) == 100.0
+
+
+@pytest.mark.asyncio
+async def test_spending_by_category_filtra_por_transaction_type() -> None:
+    service, transaction_repo, category_repo = _novo_service()
+    user_id = uuid.uuid4()
+    salario = await category_repo.add(user_id, _nova_categoria(user_id, "Salário"))
+    mercado = await category_repo.add(user_id, _nova_categoria(user_id, "Mercado"))
+    await transaction_repo.add(
+        user_id,
+        _nova_transacao(
+            user_id,
+            transaction_type=TransactionType.INCOME,
+            amount=Decimal("3000.00"),
+            transaction_date=date(2026, 7, 5),
+            category_id=salario.id,
+        ),
+    )
+    await transaction_repo.add(
+        user_id,
+        _nova_transacao(
+            user_id,
+            transaction_type=TransactionType.EXPENSE,
+            amount=Decimal("100.00"),
+            transaction_date=date(2026, 7, 10),
+            category_id=mercado.id,
+        ),
+    )
+
+    agrupado = await service.get_spending_by_category(
+        user_id, _INICIO, _FIM, transaction_type=TransactionType.INCOME
+    )
+
+    assert len(agrupado) == 1
+    assert agrupado[0]["category"] == "Salário"
+    assert agrupado[0]["total"] == Decimal("3000.00")
 
 
 @pytest.mark.asyncio
