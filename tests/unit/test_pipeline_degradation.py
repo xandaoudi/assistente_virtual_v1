@@ -17,12 +17,14 @@ from app.adapters.message_pipeline import process_channel_message
 from app.adapters.pipeline_errors import OperationConfirmedResponseFailedError, safe_message_for
 from app.adapters.tools import register_tools
 from app.domain.conversation_service import ConversationService
+from app.domain.usage_service import UsageService
 from app.models.transaction import Transaction
 from app.repositories.memory import (
     InMemoryCategoryRepository,
     InMemoryConversationRepository,
     InMemoryToolAuditLogRepository,
     InMemoryTransactionRepository,
+    InMemoryUsageLogRepository,
     InMemoryUserRepository,
 )
 from app.tools.registry import ToolRegistry
@@ -83,6 +85,7 @@ async def _processa(
         agent=agent,
         conversation_service=ConversationService(InMemoryConversationRepository()),
         resolve_deps=_resolve_deps_para(user_id, registry),
+        usage_service=UsageService(InMemoryUsageLogRepository()),
         max_history_messages=20,
         timeout_seconds=timeout_seconds,
     )

@@ -23,6 +23,10 @@ _MENSAGEM_OPERACAO_CONFIRMADA = (
     "Pode conferir no seu extrato."
 )
 
+# T3.10/RF-17: mensagem do rate limit por usuário — decidida antes de qualquer chamada à
+# LLM (message_pipeline.process_channel_message), não uma tradução de exceção como as acima.
+RATE_LIMIT_MESSAGE = "Você enviou muitas mensagens em pouco tempo. Espere um pouco e tente de novo."
+
 # Tools de escrita do registro (T2.5, T3.4) — as únicas cuja conclusão bem-sucedida antes de
 # uma falha justifica a mensagem de "operação confirmada" em vez do erro genérico.
 WRITE_TOOL_NAMES = frozenset(

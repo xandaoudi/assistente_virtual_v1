@@ -13,6 +13,7 @@ from typing import Protocol
 from app.models.category import Category
 from app.models.tool_audit_log import ToolAuditLog
 from app.models.transaction import Transaction
+from app.models.usage_log import UsageLog
 from app.models.user import User
 
 
@@ -89,3 +90,14 @@ class UserChannelRepository(Protocol):
     async def resolve_or_create(
         self, channel: str, external_id: str, user: User, categories: list[Category]
     ) -> uuid.UUID: ...
+
+
+class UsageLogRepository(Protocol):
+    """Consumo de LLM por interação (RNF-17, RNF-18, T3.10). Sem `update`/`delete`, do mesmo
+    jeito que `ToolAuditLogRepository`: um registro de consumo não é alterado depois de escrito."""
+
+    async def add(self, entry: UsageLog) -> UsageLog: ...
+
+    async def list_by_user(
+        self, user_id: uuid.UUID, start: datetime, end: datetime
+    ) -> list[UsageLog]: ...

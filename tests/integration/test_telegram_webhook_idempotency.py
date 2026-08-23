@@ -18,6 +18,7 @@ from app.adapters.tools import register_tools
 from app.api.telegram_webhook import build_telegram_webhook_router
 from app.core.db import get_session_maker
 from app.domain.conversation_service import ConversationService
+from app.domain.usage_service import UsageService
 from app.domain.user_service import UserService
 from app.models.user import User
 from app.repositories.memory import InMemoryConversationRepository
@@ -25,6 +26,7 @@ from app.repositories.sqlalchemy import (
     SqlAlchemyCategoryRepository,
     SqlAlchemyToolAuditLogRepository,
     SqlAlchemyTransactionRepository,
+    SqlAlchemyUsageLogRepository,
     SqlAlchemyUserRepository,
 )
 from app.tools.registry import ToolRegistry
@@ -96,6 +98,10 @@ async def _total_de_transacoes(user_id: uuid.UUID) -> int:
     return len(await SqlAlchemyTransactionRepository().list_by_user(user_id))
 
 
+def _novo_usage_service() -> UsageService:
+    return UsageService(SqlAlchemyUsageLogRepository())
+
+
 def _resolve_deps_para(user_id: uuid.UUID) -> ResolveDeps:
     async def resolve_deps(message: ChannelMessage) -> Deps:
         return Deps(
@@ -127,6 +133,7 @@ async def test_mesma_mensagem_entregue_duas_vezes_gera_uma_transacao() -> None:
                 agent=agent,
                 conversation_service=ConversationService(InMemoryConversationRepository()),
                 resolve_deps=_resolve_deps_para(user_id),
+                usage_service=_novo_usage_service(),
                 max_history_messages=20,
             )
 
@@ -150,6 +157,7 @@ async def test_mesma_mensagem_por_polling_e_depois_por_webhook_gera_uma_transaca
             agent=agent,
             conversation_service=ConversationService(InMemoryConversationRepository()),
             resolve_deps=_resolve_deps_para(user_id),
+            usage_service=_novo_usage_service(),
             max_history_messages=20,
         )
 
@@ -162,6 +170,7 @@ async def test_mesma_mensagem_por_polling_e_depois_por_webhook_gera_uma_transaca
                 agent=agent,
                 conversation_service=ConversationService(InMemoryConversationRepository()),
                 resolve_deps=_resolve_deps_para(user_id),
+                usage_service=_novo_usage_service(),
                 max_history_messages=20,
             )
             concluido.set()

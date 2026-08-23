@@ -16,6 +16,7 @@ from app.adapters.pipeline_errors import OperationConfirmedResponseFailedError, 
 from app.adapters.tools import register_tools
 from app.core.db import get_session_maker
 from app.domain.conversation_service import ConversationService
+from app.domain.usage_service import UsageService
 from app.domain.user_service import UserService
 from app.models.user import User
 from app.repositories.memory import InMemoryConversationRepository
@@ -23,6 +24,7 @@ from app.repositories.sqlalchemy import (
     SqlAlchemyCategoryRepository,
     SqlAlchemyToolAuditLogRepository,
     SqlAlchemyTransactionRepository,
+    SqlAlchemyUsageLogRepository,
     SqlAlchemyUserRepository,
 )
 from app.tools.registry import ToolRegistry
@@ -112,6 +114,7 @@ async def test_transacao_gravada_mais_falha_na_resposta_informa_usuario_do_suces
             agent=agent,
             conversation_service=ConversationService(InMemoryConversationRepository()),
             resolve_deps=resolve_deps,
+            usage_service=UsageService(SqlAlchemyUsageLogRepository()),
             max_history_messages=20,
         )
 

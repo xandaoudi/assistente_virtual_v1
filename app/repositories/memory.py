@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from app.models.category import Category
 from app.models.tool_audit_log import ToolAuditLog
 from app.models.transaction import Transaction
+from app.models.usage_log import UsageLog
 from app.models.user import User
 
 
@@ -164,3 +165,21 @@ class InMemoryUserChannelRepository:
         self.users[user.id] = user
         self.categories[user.id] = categories
         return user.id
+
+
+class InMemoryUsageLogRepository:
+    def __init__(self) -> None:
+        self._store: list[UsageLog] = []
+
+    async def add(self, entry: UsageLog) -> UsageLog:
+        self._store.append(entry)
+        return entry
+
+    async def list_by_user(
+        self, user_id: uuid.UUID, start: datetime, end: datetime
+    ) -> list[UsageLog]:
+        return [
+            entry
+            for entry in self._store
+            if entry.user_id == user_id and start <= entry.created_at <= end
+        ]

@@ -16,6 +16,7 @@ from app.models.category import Category
 from app.models.conversation import Conversation, Message
 from app.models.tool_audit_log import ToolAuditLog
 from app.models.transaction import Transaction
+from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.models.user_channel import UserChannel
 
@@ -273,3 +274,24 @@ class SqlAlchemyUserChannelRepository:
                     raise
                 return existente
             return user.id
+
+
+class SqlAlchemyUsageLogRepository:
+    async def add(self, entry: UsageLog) -> UsageLog:
+        async with get_session_maker()() as session:
+            session.add(entry)
+            await session.commit()
+            return entry
+
+    async def list_by_user(
+        self, user_id: uuid.UUID, start: datetime, end: datetime
+    ) -> list[UsageLog]:
+        async with get_session_maker()() as session:
+            resultado = await session.execute(
+                select(UsageLog).where(
+                    UsageLog.user_id == user_id,
+                    UsageLog.created_at >= start,
+                    UsageLog.created_at <= end,
+                )
+            )
+            return list(resultado.scalars().all())
