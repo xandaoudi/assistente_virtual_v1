@@ -122,6 +122,7 @@ def test_com_telegram_mode_polling_a_rota_do_webhook_nao_existe() -> None:
         _env_file=None,
         database_url="postgresql://user:pass@localhost/db",
         google_api_key="fake-key-de-teste",
+        llm_model="gemini-3.6-flash",
         telegram_mode="polling",
     )
     app = create_app(settings=settings)
