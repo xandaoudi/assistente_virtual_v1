@@ -9,7 +9,9 @@ import uuid
 from datetime import UTC, datetime
 
 from app.models.category import Category
+from app.models.tool_audit_log import ToolAuditLog
 from app.models.transaction import Transaction
+from app.models.user import User
 
 
 class InMemoryTransactionRepository:
@@ -18,8 +20,18 @@ class InMemoryTransactionRepository:
 
     async def add(self, user_id: uuid.UUID, transaction: Transaction) -> Transaction:
         transaction.user_id = user_id
+        if transaction.idempotency_key is not None:
+            existente = self._por_idempotency_key(user_id, transaction.idempotency_key)
+            if existente is not None:
+                return existente
         self._store[transaction.id] = transaction
         return transaction
+
+    def _por_idempotency_key(self, user_id: uuid.UUID, idempotency_key: str) -> Transaction | None:
+        for transacao in self._store.values():
+            if transacao.user_id == user_id and transacao.idempotency_key == idempotency_key:
+                return transacao
+        return None
 
     async def get(self, user_id: uuid.UUID, transaction_id: uuid.UUID) -> Transaction | None:
         transacao = self._store.get(transaction_id)
@@ -79,3 +91,41 @@ class InMemoryCategoryRepository:
         for campo, valor in changes.items():
             setattr(categoria, campo, valor)
         return categoria
+
+
+class InMemoryUserRepository:
+    def __init__(self) -> None:
+        self._store: dict[uuid.UUID, User] = {}
+
+    async def add(self, user: User) -> User:
+        self._store[user.id] = user
+        return user
+
+    async def get(self, user_id: uuid.UUID) -> User | None:
+        return self._store.get(user_id)
+
+    async def update(self, user_id: uuid.UUID, **changes: object) -> User | None:
+        user = self._store.get(user_id)
+        if user is None:
+            return None
+        for campo, valor in changes.items():
+            setattr(user, campo, valor)
+        return user
+
+
+class InMemoryToolAuditLogRepository:
+    def __init__(self) -> None:
+        self._store: list[ToolAuditLog] = []
+
+    async def add(self, entry: ToolAuditLog) -> ToolAuditLog:
+        self._store.append(entry)
+        return entry
+
+    async def list_by_user(
+        self, user_id: uuid.UUID, start: datetime, end: datetime
+    ) -> list[ToolAuditLog]:
+        return [
+            entry
+            for entry in self._store
+            if entry.user_id == user_id and start <= entry.created_at <= end
+        ]

@@ -2,7 +2,17 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Index, Numeric, String, func
+from sqlalchemy import (
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,6 +27,9 @@ class Transaction(Base):
     __table_args__ = (
         Index("ix_transactions_user_id_date", "user_id", "date"),
         Index("ix_transactions_user_id_category_id_date", "user_id", "category_id", "date"),
+        UniqueConstraint(
+            "user_id", "idempotency_key", name="uq_transactions_user_id_idempotency_key"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -34,6 +47,7 @@ class Transaction(Base):
     )
     date: Mapped[date] = mapped_column(Date)
     payment_method: Mapped[str | None] = mapped_column(String(40), default=None)
+    idempotency_key: Mapped[str | None] = mapped_column(String(100), default=None)
     source: Mapped[TransactionSource] = mapped_column(
         Enum(TransactionSource, name="transaction_source", native_enum=False, length=20)
     )

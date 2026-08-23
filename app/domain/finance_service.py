@@ -31,6 +31,7 @@ class FinanceSummary:
     total_expenses: Money
     total_income: Money
     balance: Money
+    transaction_count: int
 
 
 class CategorySpending(TypedDict):
@@ -84,6 +85,7 @@ class FinanceService:
         description: str | None = None,
         category_id: uuid.UUID | None = None,
         payment_method: str | None = None,
+        idempotency_key: str | None = None,
     ) -> CreateTransactionResult:
         valor = _validar_valor(amount)
 
@@ -106,8 +108,13 @@ class FinanceService:
             date=transaction_date or today,  # RN-02
             payment_method=payment_method,
             source=source,
+            idempotency_key=idempotency_key,
         )
         persistida = await self._transaction_repository.add(user_id, transacao)
+        if persistida.id != transacao.id:
+            # RF-89: `add` devolveu uma transação pré-existente (mesma idempotency_key) —
+            # o "precisa de categoria" reflete o registro original, não os parâmetros do replay.
+            needs_category = persistida.category_id is None
         return CreateTransactionResult(transaction=persistida, needs_category=needs_category)
 
     async def update_transaction(
@@ -149,14 +156,19 @@ class FinanceService:
             total_expenses=to_money(despesas),
             total_income=to_money(receitas),
             balance=to_money(receitas - despesas),
+            transaction_count=len(transacoes),
         )
 
     async def get_spending_by_category(
-        self, user_id: uuid.UUID, start_date: date, end_date: date
+        self,
+        user_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        transaction_type: TransactionType = TransactionType.EXPENSE,
     ) -> list[CategorySpending]:
-        """RF-53: despesas do período agrupadas por categoria, com total e percentual."""
+        """RF-53: transações do período agrupadas por categoria, com total e percentual."""
         transacoes = await self._transactions_no_periodo(
-            user_id, start_date, end_date, TransactionType.EXPENSE
+            user_id, start_date, end_date, transaction_type
         )
         total_geral = _somar(t.amount for t in transacoes)
 

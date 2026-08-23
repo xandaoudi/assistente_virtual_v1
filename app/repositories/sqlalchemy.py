@@ -9,18 +9,39 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.db import get_session_maker
 from app.models.category import Category
+from app.models.tool_audit_log import ToolAuditLog
 from app.models.transaction import Transaction
+from app.models.user import User
 
 
 class SqlAlchemyTransactionRepository:
     async def add(self, user_id: uuid.UUID, transaction: Transaction) -> Transaction:
+        """RF-89: colisão de `idempotency_key` (mesmo em concorrência real, via `UNIQUE` no
+        banco) devolve a transação já existente em vez de propagar o erro de integridade."""
         transaction.user_id = user_id
         async with get_session_maker()() as session:
             session.add(transaction)
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                if transaction.idempotency_key is None:
+                    raise
+                existente = (
+                    await session.execute(
+                        select(Transaction).where(
+                            Transaction.user_id == user_id,
+                            Transaction.idempotency_key == transaction.idempotency_key,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if existente is None:
+                    raise
+                return existente
             return transaction
 
     async def get(self, user_id: uuid.UUID, transaction_id: uuid.UUID) -> Transaction | None:
@@ -118,3 +139,48 @@ class SqlAlchemyCategoryRepository:
                 setattr(categoria, campo, valor)
             await session.commit()
             return categoria
+
+
+class SqlAlchemyUserRepository:
+    async def get(self, user_id: uuid.UUID) -> User | None:
+        async with get_session_maker()() as session:
+            return (
+                await session.execute(
+                    select(User).where(User.id == user_id, User.deleted_at.is_(None))
+                )
+            ).scalar_one_or_none()
+
+    async def update(self, user_id: uuid.UUID, **changes: object) -> User | None:
+        async with get_session_maker()() as session:
+            user = (
+                await session.execute(
+                    select(User).where(User.id == user_id, User.deleted_at.is_(None))
+                )
+            ).scalar_one_or_none()
+            if user is None:
+                return None
+            for campo, valor in changes.items():
+                setattr(user, campo, valor)
+            await session.commit()
+            return user
+
+
+class SqlAlchemyToolAuditLogRepository:
+    async def add(self, entry: ToolAuditLog) -> ToolAuditLog:
+        async with get_session_maker()() as session:
+            session.add(entry)
+            await session.commit()
+            return entry
+
+    async def list_by_user(
+        self, user_id: uuid.UUID, start: datetime, end: datetime
+    ) -> list[ToolAuditLog]:
+        async with get_session_maker()() as session:
+            resultado = await session.execute(
+                select(ToolAuditLog).where(
+                    ToolAuditLog.user_id == user_id,
+                    ToolAuditLog.created_at >= start,
+                    ToolAuditLog.created_at <= end,
+                )
+            )
+            return list(resultado.scalars().all())

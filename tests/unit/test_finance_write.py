@@ -279,3 +279,91 @@ async def test_excluir_marca_deleted_at_e_nao_remove_a_linha() -> None:
 
     assert excluida is True
     assert resultado.transaction.deleted_at is not None
+
+
+@pytest.mark.asyncio
+async def test_segunda_chamada_com_mesma_idempotency_key_devolve_resultado_original() -> None:
+    service, _ = _novo_service()
+    user_id = uuid.uuid4()
+
+    primeira = await service.create_transaction(
+        user_id,
+        transaction_type=TransactionType.EXPENSE,
+        amount=Decimal("45.00"),
+        currency="BRL",
+        source=TransactionSource.CHAT,
+        today=_HOJE,
+        description="Mercado",
+        idempotency_key="msg-123",
+    )
+
+    segunda = await service.create_transaction(
+        user_id,
+        transaction_type=TransactionType.EXPENSE,
+        amount=Decimal("999.00"),  # parâmetros diferentes — não deveriam importar num replay
+        currency="BRL",
+        source=TransactionSource.CHAT,
+        today=_HOJE,
+        description="Outra coisa",
+        idempotency_key="msg-123",
+    )
+
+    assert segunda.transaction.id == primeira.transaction.id
+    assert segunda.transaction.amount == Decimal("45.00")
+    assert segunda.transaction.description == "Mercado"
+
+
+@pytest.mark.asyncio
+async def test_idempotency_keys_diferentes_criam_transacoes_diferentes() -> None:
+    transaction_repo = InMemoryTransactionRepository()
+    service = FinanceService(transaction_repo, InMemoryCategoryRepository())
+    user_id = uuid.uuid4()
+
+    primeira = await service.create_transaction(
+        user_id,
+        transaction_type=TransactionType.EXPENSE,
+        amount=Decimal("10.00"),
+        currency="BRL",
+        source=TransactionSource.CHAT,
+        today=_HOJE,
+        idempotency_key="msg-a",
+    )
+    segunda = await service.create_transaction(
+        user_id,
+        transaction_type=TransactionType.EXPENSE,
+        amount=Decimal("10.00"),
+        currency="BRL",
+        source=TransactionSource.CHAT,
+        today=_HOJE,
+        idempotency_key="msg-b",
+    )
+
+    assert segunda.transaction.id != primeira.transaction.id
+    assert len(await transaction_repo.list_by_user(user_id)) == 2
+
+
+@pytest.mark.asyncio
+async def test_sem_idempotency_key_nao_bloqueia_a_operacao() -> None:
+    transaction_repo = InMemoryTransactionRepository()
+    service = FinanceService(transaction_repo, InMemoryCategoryRepository())
+    user_id = uuid.uuid4()
+
+    primeira = await service.create_transaction(
+        user_id,
+        transaction_type=TransactionType.EXPENSE,
+        amount=Decimal("10.00"),
+        currency="BRL",
+        source=TransactionSource.CHAT,
+        today=_HOJE,
+    )
+    segunda = await service.create_transaction(
+        user_id,
+        transaction_type=TransactionType.EXPENSE,
+        amount=Decimal("10.00"),
+        currency="BRL",
+        source=TransactionSource.CHAT,
+        today=_HOJE,
+    )
+
+    assert segunda.transaction.id != primeira.transaction.id
+    assert len(await transaction_repo.list_by_user(user_id)) == 2
