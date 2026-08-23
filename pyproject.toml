@@ -63,7 +63,7 @@ ignore = ["E501"]                      # comprimento fica com o formatter
 # TID251 também vale para tests/: conftest.py precisa importar pydantic_ai
 # para a fixture do RNF-36 (bloquear chamada real à LLM), e isso não é
 # domain nem tools — RF-86 não se aplica a testes.
-"tests/*" = ["S101", "ARG", "TID251"]   # assert e fixtures não usadas são normais em teste
+"tests/*" = ["S101", "S105", "ARG", "TID251"]   # assert, segredo fixo e fixtures não usadas são normais em teste
 "app/adapters/*" = ["TID251"]
 
 [tool.ruff.lint.mccabe]

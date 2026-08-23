@@ -11,7 +11,19 @@ from datetime import UTC, datetime
 from app.models.category import Category
 from app.models.tool_audit_log import ToolAuditLog
 from app.models.transaction import Transaction
+from app.models.usage_log import UsageLog
 from app.models.user import User
+
+
+class InMemoryConversationRepository:
+    def __init__(self) -> None:
+        self._store: dict[uuid.UUID, list[dict[str, object]]] = {}
+
+    async def append_messages(self, user_id: uuid.UUID, messages: list[dict[str, object]]) -> None:
+        self._store.setdefault(user_id, []).extend(messages)
+
+    async def list_messages(self, user_id: uuid.UUID) -> list[dict[str, object]]:
+        return list(self._store.get(user_id, []))
 
 
 class InMemoryTransactionRepository:
@@ -124,6 +136,48 @@ class InMemoryToolAuditLogRepository:
     async def list_by_user(
         self, user_id: uuid.UUID, start: datetime, end: datetime
     ) -> list[ToolAuditLog]:
+        return [
+            entry
+            for entry in self._store
+            if entry.user_id == user_id and start <= entry.created_at <= end
+        ]
+
+
+class InMemoryUserChannelRepository:
+    """Sem concorrência real de propósito — a corrida pelo mesmo `(channel, external_id)`
+    só é possível contra um banco de verdade (ver `SqlAlchemyUserChannelRepository`)."""
+
+    def __init__(self) -> None:
+        self._links: dict[tuple[str, str], uuid.UUID] = {}
+        self.users: dict[uuid.UUID, User] = {}
+        self.categories: dict[uuid.UUID, list[Category]] = {}
+
+    async def get_user_id(self, channel: str, external_id: str) -> uuid.UUID | None:
+        return self._links.get((channel, external_id))
+
+    async def resolve_or_create(
+        self, channel: str, external_id: str, user: User, categories: list[Category]
+    ) -> uuid.UUID:
+        existente = self._links.get((channel, external_id))
+        if existente is not None:
+            return existente
+        self._links[(channel, external_id)] = user.id
+        self.users[user.id] = user
+        self.categories[user.id] = categories
+        return user.id
+
+
+class InMemoryUsageLogRepository:
+    def __init__(self) -> None:
+        self._store: list[UsageLog] = []
+
+    async def add(self, entry: UsageLog) -> UsageLog:
+        self._store.append(entry)
+        return entry
+
+    async def list_by_user(
+        self, user_id: uuid.UUID, start: datetime, end: datetime
+    ) -> list[UsageLog]:
         return [
             entry
             for entry in self._store

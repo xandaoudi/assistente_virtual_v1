@@ -13,9 +13,43 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.db import get_session_maker
 from app.models.category import Category
+from app.models.conversation import Conversation, Message
 from app.models.tool_audit_log import ToolAuditLog
 from app.models.transaction import Transaction
+from app.models.usage_log import UsageLog
 from app.models.user import User
+from app.models.user_channel import UserChannel
+
+
+class SqlAlchemyConversationRepository:
+    async def append_messages(self, user_id: uuid.UUID, messages: list[dict[str, object]]) -> None:
+        if not messages:
+            return
+        async with get_session_maker()() as session:
+            conversa = (
+                await session.execute(select(Conversation).where(Conversation.user_id == user_id))
+            ).scalar_one_or_none()
+            if conversa is None:
+                conversa = Conversation(id=uuid.uuid4(), user_id=user_id)
+                session.add(conversa)
+                await session.flush()
+            for body in messages:
+                session.add(Message(conversation_id=conversa.id, body=body))
+            await session.commit()
+
+    async def list_messages(self, user_id: uuid.UUID) -> list[dict[str, object]]:
+        async with get_session_maker()() as session:
+            conversa = (
+                await session.execute(select(Conversation).where(Conversation.user_id == user_id))
+            ).scalar_one_or_none()
+            if conversa is None:
+                return []
+            resultado = await session.execute(
+                select(Message.body)
+                .where(Message.conversation_id == conversa.id)
+                .order_by(Message.id)
+            )
+            return list(resultado.scalars().all())
 
 
 class SqlAlchemyTransactionRepository:
@@ -142,6 +176,12 @@ class SqlAlchemyCategoryRepository:
 
 
 class SqlAlchemyUserRepository:
+    async def add(self, user: User) -> User:
+        async with get_session_maker()() as session:
+            session.add(user)
+            await session.commit()
+            return user
+
     async def get(self, user_id: uuid.UUID) -> User | None:
         async with get_session_maker()() as session:
             return (
@@ -181,6 +221,77 @@ class SqlAlchemyToolAuditLogRepository:
                     ToolAuditLog.user_id == user_id,
                     ToolAuditLog.created_at >= start,
                     ToolAuditLog.created_at <= end,
+                )
+            )
+            return list(resultado.scalars().all())
+
+
+class SqlAlchemyUserChannelRepository:
+    """Resolução de identidade (RF-02, T3.8): `resolve_or_create` cria usuário, categorias
+    padrão e vínculo numa única transação. Se outra requisição concorrente venceu a corrida
+    pelo mesmo `(channel, external_id)` — garantido pelo `UNIQUE` da tabela — a transação
+    perdedora é descartada por inteiro (nenhum usuário órfão fica para trás) e o `user_id`
+    já vinculado é devolvido no lugar, do mesmo jeito que o T2.11 faz para `idempotency_key`.
+    """
+
+    async def get_user_id(self, channel: str, external_id: str) -> uuid.UUID | None:
+        async with get_session_maker()() as session:
+            return (
+                await session.execute(
+                    select(UserChannel.user_id).where(
+                        UserChannel.channel == channel, UserChannel.external_id == external_id
+                    )
+                )
+            ).scalar_one_or_none()
+
+    async def resolve_or_create(
+        self, channel: str, external_id: str, user: User, categories: list[Category]
+    ) -> uuid.UUID:
+        async with get_session_maker()() as session:
+            try:
+                session.add(user)
+                # Sem `relationship()` entre `User` e `Category`/`UserChannel` — o unit of
+                # work não conhece essa dependência sozinho, então o `flush` aqui garante
+                # que o `INSERT` de `user` sai antes dos que referenciam `user.id` por FK.
+                await session.flush()
+                session.add_all(categories)
+                session.add(
+                    UserChannel(
+                        id=uuid.uuid4(), user_id=user.id, channel=channel, external_id=external_id
+                    )
+                )
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                existente = (
+                    await session.execute(
+                        select(UserChannel.user_id).where(
+                            UserChannel.channel == channel, UserChannel.external_id == external_id
+                        )
+                    )
+                ).scalar_one_or_none()
+                if existente is None:
+                    raise
+                return existente
+            return user.id
+
+
+class SqlAlchemyUsageLogRepository:
+    async def add(self, entry: UsageLog) -> UsageLog:
+        async with get_session_maker()() as session:
+            session.add(entry)
+            await session.commit()
+            return entry
+
+    async def list_by_user(
+        self, user_id: uuid.UUID, start: datetime, end: datetime
+    ) -> list[UsageLog]:
+        async with get_session_maker()() as session:
+            resultado = await session.execute(
+                select(UsageLog).where(
+                    UsageLog.user_id == user_id,
+                    UsageLog.created_at >= start,
+                    UsageLog.created_at <= end,
                 )
             )
             return list(resultado.scalars().all())

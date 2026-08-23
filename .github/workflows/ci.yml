@@ -9,6 +9,11 @@ on:
 env:
   APP_ENV: test
   DATABASE_URL: postgresql+psycopg://assistente:assistente@localhost:5432/assistente_virtual
+  # Nunca usadas para chamada real (RNF-36 bloqueia ALLOW_MODEL_REQUESTS em todo teste) —
+  # só existem pra Settings() conseguir montar. get_settings() é chamado por alembic/env.py,
+  # então praticamente todo teste de integração passa por aqui, não só o que fala com a LLM.
+  GOOGLE_API_KEY: fake-key-de-ci
+  LLM_MODEL: gemini-3.6-flash
 
 jobs:
   ci:
