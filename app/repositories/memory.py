@@ -14,6 +14,17 @@ from app.models.transaction import Transaction
 from app.models.user import User
 
 
+class InMemoryConversationRepository:
+    def __init__(self) -> None:
+        self._store: dict[uuid.UUID, list[dict[str, object]]] = {}
+
+    async def append_messages(self, user_id: uuid.UUID, messages: list[dict[str, object]]) -> None:
+        self._store.setdefault(user_id, []).extend(messages)
+
+    async def list_messages(self, user_id: uuid.UUID) -> list[dict[str, object]]:
+        return list(self._store.get(user_id, []))
+
+
 class InMemoryTransactionRepository:
     def __init__(self) -> None:
         self._store: dict[uuid.UUID, Transaction] = {}

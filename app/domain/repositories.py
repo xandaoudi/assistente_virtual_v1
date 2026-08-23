@@ -58,3 +58,17 @@ class ToolAuditLogRepository(Protocol):
     async def list_by_user(
         self, user_id: uuid.UUID, start: datetime, end: datetime
     ) -> list[ToolAuditLog]: ...
+
+
+class ConversationRepository(Protocol):
+    """Histórico de conversa (RF-65, decisão da Q-07).
+
+    Cada mensagem já chega serializada pelo adapter como um dict JSON-seguro — nunca um
+    `ModelMessage` do Pydantic AI (RF-86): o framework de agente não existe deste lado.
+    """
+
+    async def append_messages(
+        self, user_id: uuid.UUID, messages: list[dict[str, object]]
+    ) -> None: ...
+
+    async def list_messages(self, user_id: uuid.UUID) -> list[dict[str, object]]: ...

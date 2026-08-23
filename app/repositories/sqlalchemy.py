@@ -13,9 +13,41 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.db import get_session_maker
 from app.models.category import Category
+from app.models.conversation import Conversation, Message
 from app.models.tool_audit_log import ToolAuditLog
 from app.models.transaction import Transaction
 from app.models.user import User
+
+
+class SqlAlchemyConversationRepository:
+    async def append_messages(self, user_id: uuid.UUID, messages: list[dict[str, object]]) -> None:
+        if not messages:
+            return
+        async with get_session_maker()() as session:
+            conversa = (
+                await session.execute(select(Conversation).where(Conversation.user_id == user_id))
+            ).scalar_one_or_none()
+            if conversa is None:
+                conversa = Conversation(id=uuid.uuid4(), user_id=user_id)
+                session.add(conversa)
+                await session.flush()
+            for body in messages:
+                session.add(Message(conversation_id=conversa.id, body=body))
+            await session.commit()
+
+    async def list_messages(self, user_id: uuid.UUID) -> list[dict[str, object]]:
+        async with get_session_maker()() as session:
+            conversa = (
+                await session.execute(select(Conversation).where(Conversation.user_id == user_id))
+            ).scalar_one_or_none()
+            if conversa is None:
+                return []
+            resultado = await session.execute(
+                select(Message.body)
+                .where(Message.conversation_id == conversa.id)
+                .order_by(Message.id)
+            )
+            return list(resultado.scalars().all())
 
 
 class SqlAlchemyTransactionRepository:

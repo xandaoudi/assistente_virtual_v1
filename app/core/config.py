@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     llm_provider: str = "google"
     llm_model: str = "gemini-2.5-flash"
     google_api_key: str | None = None
+    conversation_history_window: int = 20
+    """Nº máximo de mensagens (ModelMessage) recarregadas por turno — §3.3.5, T3.5."""
 
     @model_validator(mode="after")
     def _valida_chave_do_provider(self) -> Self:
