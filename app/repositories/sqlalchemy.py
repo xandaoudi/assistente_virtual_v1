@@ -17,6 +17,7 @@ from app.models.conversation import Conversation, Message
 from app.models.tool_audit_log import ToolAuditLog
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.models.user_channel import UserChannel
 
 
 class SqlAlchemyConversationRepository:
@@ -174,6 +175,12 @@ class SqlAlchemyCategoryRepository:
 
 
 class SqlAlchemyUserRepository:
+    async def add(self, user: User) -> User:
+        async with get_session_maker()() as session:
+            session.add(user)
+            await session.commit()
+            return user
+
     async def get(self, user_id: uuid.UUID) -> User | None:
         async with get_session_maker()() as session:
             return (
@@ -216,3 +223,53 @@ class SqlAlchemyToolAuditLogRepository:
                 )
             )
             return list(resultado.scalars().all())
+
+
+class SqlAlchemyUserChannelRepository:
+    """Resolução de identidade (RF-02, T3.8): `resolve_or_create` cria usuário, categorias
+    padrão e vínculo numa única transação. Se outra requisição concorrente venceu a corrida
+    pelo mesmo `(channel, external_id)` — garantido pelo `UNIQUE` da tabela — a transação
+    perdedora é descartada por inteiro (nenhum usuário órfão fica para trás) e o `user_id`
+    já vinculado é devolvido no lugar, do mesmo jeito que o T2.11 faz para `idempotency_key`.
+    """
+
+    async def get_user_id(self, channel: str, external_id: str) -> uuid.UUID | None:
+        async with get_session_maker()() as session:
+            return (
+                await session.execute(
+                    select(UserChannel.user_id).where(
+                        UserChannel.channel == channel, UserChannel.external_id == external_id
+                    )
+                )
+            ).scalar_one_or_none()
+
+    async def resolve_or_create(
+        self, channel: str, external_id: str, user: User, categories: list[Category]
+    ) -> uuid.UUID:
+        async with get_session_maker()() as session:
+            try:
+                session.add(user)
+                # Sem `relationship()` entre `User` e `Category`/`UserChannel` — o unit of
+                # work não conhece essa dependência sozinho, então o `flush` aqui garante
+                # que o `INSERT` de `user` sai antes dos que referenciam `user.id` por FK.
+                await session.flush()
+                session.add_all(categories)
+                session.add(
+                    UserChannel(
+                        id=uuid.uuid4(), user_id=user.id, channel=channel, external_id=external_id
+                    )
+                )
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                existente = (
+                    await session.execute(
+                        select(UserChannel.user_id).where(
+                            UserChannel.channel == channel, UserChannel.external_id == external_id
+                        )
+                    )
+                ).scalar_one_or_none()
+                if existente is None:
+                    raise
+                return existente
+            return user.id

@@ -33,7 +33,9 @@ def test_upgrade_cria_tabelas_conversations_e_messages_e_downgrade_remove() -> N
         command.upgrade(cfg, "head")
         assert {"conversations", "messages"} <= _tabelas_existentes()
 
-        command.downgrade(cfg, "-1")
+        # Revisão explícita (não "-1" a partir de head): migrations futuras empilhadas
+        # sobre esta não podem quebrar um teste que só quer provar o downgrade *desta*.
+        command.downgrade(cfg, "943151c8f5a0")
         assert "messages" not in _tabelas_existentes()
         assert "conversations" not in _tabelas_existentes()
     finally:

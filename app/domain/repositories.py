@@ -43,7 +43,9 @@ class CategoryRepository(Protocol):
 
 
 class UserRepository(Protocol):
-    """Sem `add`: criar usuário é onboarding (T1.3/Etapa 4), não escopo das tools."""
+    """`add` existe para onboarding (T1.3, T3.8) — as tools nunca criam usuário."""
+
+    async def add(self, user: User) -> User: ...
 
     async def get(self, user_id: uuid.UUID) -> User | None: ...
 
@@ -72,3 +74,18 @@ class ConversationRepository(Protocol):
     ) -> None: ...
 
     async def list_messages(self, user_id: uuid.UUID) -> list[dict[str, object]]: ...
+
+
+class UserChannelRepository(Protocol):
+    """Resolução de identidade — `chat_id` do canal -> `user_id` interno (RF-02, T3.8).
+
+    `resolve_or_create` é atômica: cria o usuário, as categorias padrão e o vínculo numa
+    única operação, ou devolve o `user_id` já vinculado se outra chamada concorrente venceu
+    a corrida pelo mesmo `(channel, external_id)` — nunca as duas coisas ao mesmo tempo.
+    """
+
+    async def get_user_id(self, channel: str, external_id: str) -> uuid.UUID | None: ...
+
+    async def resolve_or_create(
+        self, channel: str, external_id: str, user: User, categories: list[Category]
+    ) -> uuid.UUID: ...

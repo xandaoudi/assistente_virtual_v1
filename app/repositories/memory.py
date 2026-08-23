@@ -140,3 +140,27 @@ class InMemoryToolAuditLogRepository:
             for entry in self._store
             if entry.user_id == user_id and start <= entry.created_at <= end
         ]
+
+
+class InMemoryUserChannelRepository:
+    """Sem concorrência real de propósito — a corrida pelo mesmo `(channel, external_id)`
+    só é possível contra um banco de verdade (ver `SqlAlchemyUserChannelRepository`)."""
+
+    def __init__(self) -> None:
+        self._links: dict[tuple[str, str], uuid.UUID] = {}
+        self.users: dict[uuid.UUID, User] = {}
+        self.categories: dict[uuid.UUID, list[Category]] = {}
+
+    async def get_user_id(self, channel: str, external_id: str) -> uuid.UUID | None:
+        return self._links.get((channel, external_id))
+
+    async def resolve_or_create(
+        self, channel: str, external_id: str, user: User, categories: list[Category]
+    ) -> uuid.UUID:
+        existente = self._links.get((channel, external_id))
+        if existente is not None:
+            return existente
+        self._links[(channel, external_id)] = user.id
+        self.users[user.id] = user
+        self.categories[user.id] = categories
+        return user.id
