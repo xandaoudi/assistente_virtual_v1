@@ -4,19 +4,13 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from app.adapters.channel_message import ChannelMessage
+from app.adapters.production import build_production_pipeline
 from app.adapters.telegram import TelegramClient
 from app.api.telegram_webhook import build_telegram_webhook_router
 from app.core.config import Settings, get_settings
 from app.core.db import get_session_maker
 
 logger = logging.getLogger(__name__)
-
-
-async def _handler_provisorio(message: ChannelMessage) -> str | None:
-    """Placeholder até a T3.8 resolver `chat_id` -> `user_id` e ligar ao agente (T3.1-T3.5)."""
-    logger.info("webhook recebeu mensagem: external_user_id=%s", message.external_user_id)
-    return "Recebi sua mensagem — ainda estou aprendendo a responder. Volte em breve!"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -50,10 +44,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         and settings.telegram_webhook_secret
     ):
         telegram_client = TelegramClient(settings.telegram_bot_token or "")
+        handler = build_production_pipeline(
+            max_history_messages=settings.conversation_history_window
+        )
         app.include_router(
             build_telegram_webhook_router(
                 webhook_secret=settings.telegram_webhook_secret,
-                handler=_handler_provisorio,
+                handler=handler,
                 telegram_client=telegram_client,
             )
         )

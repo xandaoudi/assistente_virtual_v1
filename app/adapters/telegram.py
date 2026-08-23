@@ -10,6 +10,7 @@ de cada vez no corpo do POST — não há dois caminhos de conversão, só duas 
 """
 
 import asyncio
+import logging
 import math
 import re
 from collections.abc import Awaitable, Callable
@@ -21,7 +22,11 @@ import httpx
 
 from app.adapters.channel_message import ChannelMessage
 
+logger = logging.getLogger(__name__)
+
 TELEGRAM_MESSAGE_LIMIT = 4096
+
+_ACAO_DIGITANDO = "typing"
 
 UNSUPPORTED_CONTENT_REPLY = (
     "Por enquanto eu só entendo texto — descreva o gasto ou compromisso em palavras que "
@@ -229,6 +234,42 @@ class TelegramSender(Protocol):
     async def send_chat_action(self, chat_id: str, action: str) -> None: ...
 
     async def send_message(self, chat_id: str, text: str) -> None: ...
+
+
+async def send_reply(
+    telegram_client: TelegramSender, message: ChannelMessage, resposta: str | None
+) -> None:
+    """Resposta padrão quando o handler não devolveu nada (T3.7), formatação e divisão para
+    o limite do Telegram — compartilhado pelo webhook e pelo poller (T3.14) para que os dois
+    modos de recepção entreguem exatamente a mesma coisa."""
+    if resposta is None:
+        resposta = default_reply_for(message)
+    if resposta is None:
+        return
+    for parte in split_telegram_message(format_telegram_output(resposta)):
+        await telegram_client.send_message(message.external_user_id, parte)
+
+
+async def handle_and_reply(
+    message: ChannelMessage,
+    handler: Callable[[ChannelMessage], Awaitable[str | None]],
+    telegram_client: TelegramSender,
+) -> None:
+    """Indicador de "digitando" (cosmético — nunca derruba o resto), roda `handler` e manda
+    a resposta. Compartilhado pelo webhook (T3.7) e pelo poller (T3.14): os dois já confiam
+    que uma falha do `handler` nunca deve propagar — o webhook porque a confirmação HTTP já
+    foi enviada antes; o poller porque uma mensagem ruim não pode derrubar o laço de longa
+    duração e travar todo mundo atrás dela na fila."""
+    try:
+        await telegram_client.send_chat_action(message.external_user_id, _ACAO_DIGITANDO)
+    except Exception:
+        logger.warning("falha ao enviar indicador de digitando", exc_info=True)
+
+    try:
+        resposta = await handler(message)
+        await send_reply(telegram_client, message, resposta)
+    except Exception:
+        logger.exception("falha ao processar mensagem do telegram")
 
 
 class TelegramClient:

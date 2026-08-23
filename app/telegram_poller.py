@@ -5,31 +5,38 @@ dentro dos workers do uvicorn, cada worker chamaria `getUpdates` e o usuário re
 resposta duplicada — mesmo problema do scheduler da Etapa 6. Em produção (`TELEGRAM_MODE=
 webhook`) ele simplesmente não sobe.
 
-O handler abaixo ainda é um placeholder: a resolução de `chat_id` -> `user_id` (T3.8) e a
-ligação com o agente (T3.1-T3.5) entram depois. Por ora isso prova que o laço de polling
-funciona de ponta a ponta contra a Bot API real, com a mesma conversão para
-`ChannelMessage` que o webhook (T3.7) vai usar.
+T3.14: liga o pipeline de produção completo (identidade, agente, tools, degradação, uso —
+T3.8-T3.10) ao mesmo `handle_and_reply` que o webhook usa (T3.7), para que polling e webhook
+respondam de forma idêntica — só a porta de entrada muda.
 """
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 from app.adapters.channel_message import ChannelMessage
-from app.adapters.telegram import HttpTelegramUpdateSource, run_polling_loop
+from app.adapters.production import build_production_pipeline
+from app.adapters.telegram import (
+    HttpTelegramUpdateSource,
+    TelegramClient,
+    TelegramSender,
+    handle_and_reply,
+    run_polling_loop,
+)
 from app.core.asyncio_loop import loop_factory
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 
-async def _handler_provisorio(message: ChannelMessage) -> None:
-    logger.info(
-        "mensagem recebida do telegram: channel=%s external_user_id=%s message_id=%s has_text=%s",
-        message.channel,
-        message.external_user_id,
-        message.message_id,
-        message.text is not None,
-    )
+def _build_handler(
+    pipeline_handler: Callable[[ChannelMessage], Awaitable[str | None]],
+    telegram_client: TelegramSender,
+) -> Callable[[ChannelMessage], Awaitable[None]]:
+    async def handler(message: ChannelMessage) -> None:
+        await handle_and_reply(message, pipeline_handler, telegram_client)
+
+    return handler
 
 
 async def _main() -> None:
@@ -44,7 +51,11 @@ async def _main() -> None:
 
     logging.basicConfig(level=settings.log_level)
     source = HttpTelegramUpdateSource(settings.telegram_bot_token)
-    await run_polling_loop(source, _handler_provisorio)
+    telegram_client = TelegramClient(settings.telegram_bot_token)
+    pipeline_handler = build_production_pipeline(
+        max_history_messages=settings.conversation_history_window
+    )
+    await run_polling_loop(source, _build_handler(pipeline_handler, telegram_client))
 
 
 def main() -> None:

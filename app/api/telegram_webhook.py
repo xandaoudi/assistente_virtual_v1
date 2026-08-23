@@ -7,26 +7,15 @@ no processamento em segundo plano nunca vira erro na confirmação: ela já foi 
 """
 
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.adapters.channel_message import ChannelMessage
-from app.adapters.telegram import (
-    TelegramSender,
-    default_reply_for,
-    format_telegram_output,
-    parse_telegram_update,
-    split_telegram_message,
-)
+from app.adapters.telegram import TelegramSender, handle_and_reply, parse_telegram_update
 
 MessageHandler = Callable[[ChannelMessage], Awaitable[str | None]]
-
-_ACAO_DIGITANDO = "typing"
-
-logger = logging.getLogger(__name__)
 
 _tarefas_em_andamento: set[asyncio.Task[None]] = set()
 
@@ -44,28 +33,12 @@ async def _processar_em_segundo_plano(
     handler: MessageHandler,
     telegram_client: TelegramSender,
 ) -> None:
-    try:
-        mensagem = parse_telegram_update(update)
-        if mensagem is None:
-            return
-
-        try:
-            await telegram_client.send_chat_action(mensagem.external_user_id, _ACAO_DIGITANDO)
-        except Exception:  # indicador de "digitando" é cosmético — nunca derruba o resto
-            logger.warning("falha ao enviar indicador de digitando", exc_info=True)
-
-        resposta = await handler(mensagem)
-        if resposta is None:
-            resposta = default_reply_for(mensagem)
-        if resposta is None:
-            return
-
-        for parte in split_telegram_message(format_telegram_output(resposta)):
-            await telegram_client.send_message(mensagem.external_user_id, parte)
-    except Exception:
-        # A confirmação ao Telegram já foi enviada antes deste laço começar — uma falha
-        # aqui nunca deve derrubar o processo nem virar erro para quem chamou o webhook.
-        logger.exception("falha ao processar update do telegram em segundo plano")
+    """A confirmação ao Telegram já foi enviada antes deste laço começar — por isso
+    `handle_and_reply` cuida de nunca deixar uma falha propagar daqui pra fora."""
+    mensagem = parse_telegram_update(update)
+    if mensagem is None:
+        return
+    await handle_and_reply(mensagem, handler, telegram_client)
 
 
 def build_telegram_webhook_router(
