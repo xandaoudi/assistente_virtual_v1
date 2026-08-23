@@ -1,9 +1,9 @@
 from datetime import date
 
 import pytest
-from app.tools.audit import redact_params
 
 from app.domain.enums import TransactionType
+from app.tools.audit import redact_params
 from app.tools.schemas import CreateTransactionParams, ListTransactionsParams
 
 pytestmark = pytest.mark.unit

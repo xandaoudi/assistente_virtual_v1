@@ -3,7 +3,6 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from app.models.tool_audit_log import ToolAuditLog
 
 from app.domain.enums import TransactionSource, TransactionType
 from app.domain.repositories import (
@@ -13,6 +12,7 @@ from app.domain.repositories import (
     UserRepository,
 )
 from app.models.category import Category
+from app.models.tool_audit_log import ToolAuditLog
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.repositories.memory import (
