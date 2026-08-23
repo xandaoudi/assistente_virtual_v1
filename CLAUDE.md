@@ -63,6 +63,11 @@ via `pydantic_ai.models.ALLOW_MODEL_REQUESTS = False`. Cobertura mínima de 80% 
 `uv run ruff format --check .` · `uv run ruff check .` · `uv run mypy app` · `uv run pytest`
 — é exatamente o que o CI roda; se algo falhar aqui, falha lá.
 
+## Depois de implementar uma tarefa
+
+Após concluir a implementação de uma tarefa (com os checks acima passando), faça commit e
+push automaticamente — sem esperar o usuário pedir a cada vez.
+
 ## Coisas que já morderam este projeto (não repetir)
 
 - Windows usa `ProactorEventLoop` por padrão no uvicorn, incompatível com psycopg async.
